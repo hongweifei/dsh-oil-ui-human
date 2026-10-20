@@ -12,7 +12,7 @@
 
 ---
 
-**This repository is a fork of [dsh-oil-ui](https://github.com/oil-oil/dsh-oil-ui), bundling the [oil-ui-human](https://github.com/hongweifei/oil-ui-human) edition of the Skill.**
+**`dsh-oil-ui-human` is a fork of [dsh-oil-ui](https://github.com/oil-oil/dsh-oil-ui), bundling the [oil-ui-human](https://github.com/hongweifei/oil-ui-human) edition of the Skill.**
 
 It brings the full `oil-ui` design workflow straight into DeepSeek Harness: explore 3 genuinely distinct first-screen directions side by side in a single comparison page, pick the strongest one, and refine the final interface against real browser screenshots, interactive step checks, and multi-viewport captures directly in your working directory.
 
@@ -30,7 +30,7 @@ All 6 interfaces above (`ARCHON`, `Sonar`, `Tempo 2026`, `Atelier Volders`, `Fon
 
 DeepSeek Harness already ships with native file tools (`read`, `write`, `edit`), shell execution (`bash`), image inspection (`read_image`), and subagents (`subagent`). Wrapping a separate project sandbox or an adapter layer on top forces the model to guess between duplicate file tools and nested directories.
 
-`dsh-oil-ui` is built natively for DeepSeek Harness:
+`dsh-oil-ui-human` is built natively for DeepSeek Harness:
 
 - **Works directly in `cwd`**: No hidden `projects/<uuid>` nesting. HTML, CSS, scripts, and screenshots live right in the current working directory alongside native `read`, `write`, and `read_image`.
 - **Registers only the 5 specialized `oil-ui` tools**: Comparison page bundling, headless browser captures & interaction scripts, public-domain media search, AI image generation, and Skill status discovery.
@@ -86,7 +86,7 @@ When the main agent spawns a `subagent` for visual and interaction review, the p
 
 This repository is a fork of `dsh-oil-ui`. Every channel that could alter the plugin's content at runtime or insert commercial promotion has been removed:
 
-- **No version check, no self-update**: upstream silently queries `ui.oiloil.org` during `oil_ui_skill_status` and can rewrite the local Skill directory in place via `update: true` through a pinned CLI installer. For a fork that is exactly the wrong behavior—remote content would overwrite local changes—so the whole channel is deleted. The plugin no longer contacts any distribution server at runtime, and `/oil-ui-status` has no `update` argument.
+- **No version check, no self-update**: upstream silently queries `ui.oiloil.org` during `oil_ui_skill_status` and can rewrite the local Skill directory in place via `update: true` through a pinned CLI installer. For a fork that is exactly the wrong behavior—remote content would overwrite local changes—so the whole channel is deleted. The plugin no longer contacts any distribution server at runtime, and `/oil-ui-status` has no `update` argument. Upstream's daily scheduled CI job that re-vendored `oil-oil/oil-ui` and auto-committed/pushed is removed as well.
 - **No Pro detection or promotion**: local `oil-ui-pro` auto-discovery, the edition/PRO badge, and the one-time Pro recommendation (and its `~/.local/state` marker files) are all removed.
 - **The bundled Skill is `oil-ui-human`**: `skills/oil-ui` is now a derived runtime copy (27 files) of the [oil-ui-human](https://github.com/hongweifei/oil-ui-human) repository—the variant with the aesthetic dogmas and canned menus removed—so documentation wording and manual structure follow that fork.
 - **Explicit local Skill directory**: instead of auto-scanning installed Skill directories for hot-switching, set `skillDir` explicitly to point the plugin tools at a local `oil-ui` directory (e.g. a work-in-progress fork copy). Only installations whose `SKILL.md` declares `name: oil-ui` are accepted; anything else falls back to the bundled copy.
@@ -115,7 +115,7 @@ git clone https://github.com/hongweifei/dsh-oil-ui-human.git
 cd dsh-oil-ui-human
 pnpm install
 pnpm pack:plugin
-dsh plugin --profile web add ./.work/dsh-oil-ui-0.3.2.tgz
+dsh plugin --profile web add ./.work/dsh-oil-ui-human-0.3.2-human.tgz
 ```
 
 </details>
@@ -125,8 +125,8 @@ dsh plugin --profile web add ./.work/dsh-oil-ui-0.3.2.tgz
 The plugin works out of the box: it uses the bundled `oil-ui` Skill and auto-discovers the local `image-gen` Skill. To override paths or ports, add an entry override to `~/.dsh/cordis.patch.yml` (global) or `~/.dsh/profiles/web/cordis.patch.yml` (per-profile), matching [`src/config.ts`](src/config.ts):
 
 ```yaml
-- id: dsh-oil-ui
-  name: dsh-oil-ui
+- id: dsh-oil-ui-human
+  name: dsh-oil-ui-human
   config:
     # Optional: explicitly point the tools at a local oil-ui Skill directory
     # (defaults to the bundled copy; OIL_UI_SKILL_DIR works too; only directories
@@ -151,7 +151,7 @@ The source of the bundled `skills/oil-ui` is the [hongweifei/oil-ui-human](https
 ```bash
 pnpm sync:skill     # Shallow-clones https://github.com/hongweifei/oil-ui-human (main) into .work/ and re-derives the bundle
 pnpm check          # Typecheck + tests + rebuilds lib/index.js
-pnpm pack:plugin    # Rebuilds and packs .work/dsh-oil-ui-<version>.tgz
+pnpm pack:plugin    # Rebuilds and packs .work/dsh-oil-ui-human-<version>.tgz
 ```
 
 `sync:skill` also accepts an explicit source argument or `OIL_UI_REPO`: a local directory path, any git URL, or `URL#branch/tag/commit` (e.g. `node scripts/vendor-oil-ui.mjs github:hongweifei/oil-ui-human#a42de5c`). To vendor unpushed local Skill changes while developing the fork, run `pnpm vendor:skill` (syncs the sibling `../oil-ui-human`). Derivation only happens when you run it explicitly—the plugin never contacts a remote at runtime and never rewrites the bundled Skill on its own.

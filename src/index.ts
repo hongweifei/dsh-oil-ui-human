@@ -9,7 +9,7 @@ import { loadUpstreamSkill, skillStatus, resolveActiveSkill, createSkillProvider
 import { Config } from './config.ts';
 import { DesignWorkbench } from './workbench.ts';
 export { Config };
-export const name = 'dsh-oil-ui';
+export const name = 'dsh-oil-ui-human';
 
 export const MAIN_AGENT_SYSTEM_PROMPT =
   'For UI tasks, call oil_ui_skill_status first to refresh discovery and confirm the Skill directory and image-generation availability, then load the "oil-ui" Skill using the skill tool. Read and write project files directly in the current working directory. Use oil_ui_explorer for style-explorer.html comparison pages, oil_ui_shoot for screenshots/interactions/responsive checks/recordings, oil_ui_media for public-domain and museum media search/preview/fetch, and oil_ui_image for generating or editing visual assets.';

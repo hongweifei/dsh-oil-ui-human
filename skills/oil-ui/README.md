@@ -37,7 +37,7 @@ npx skills add hongweifei/oil-ui-human
 
 It's ready to use right after installation, with nothing to configure.
 
-If you use DeepSeek Harness, install the native plugin [dsh-oil-ui](https://github.com/oil-oil/dsh-oil-ui) (`dsh plugin --profile web add github:oil-oil/dsh-oil-ui`), which exposes interface and media-search tools to the model.
+If you use DeepSeek Harness, install the native plugin [dsh-oil-ui-human](https://github.com/hongweifei/dsh-oil-ui-human) (`dsh plugin --profile web add github:hongweifei/dsh-oil-ui-human`), which exposes interface and media tools to the model and bundles the Skill from this repository.
 
 ## Usage
 

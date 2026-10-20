@@ -12,7 +12,7 @@
 
 ---
 
-**`dsh-oil-ui` 是 [dsh-oil-ui](https://github.com/oil-oil/dsh-oil-ui) 的 fork，内置 [oil-ui-human](https://github.com/hongweifei/oil-ui-human) 版 Skill。**
+**`dsh-oil-ui-human` 是 [dsh-oil-ui](https://github.com/oil-oil/dsh-oil-ui) 的 fork 插件，内置 [oil-ui-human](https://github.com/hongweifei/oil-ui-human) 版 Skill。**
 
 它把 `oil-ui` 的界面设计流程直接接进 `@deepseek-ai/dsh`：先在同屏对比页里摆开 3 个真正拉开差距的方向，挑定后再在当前目录里写代码、截真图、点交互、查多端，照着真实画面一轮轮把界面改到位。
 
@@ -30,7 +30,7 @@
 
 DeepSeek Harness 本身已经有文件读写（`read` / `write` / `edit`）、终端（`bash`）、看图（`read_image`）和子代理（`subagent`）。如果再包一层项目沙箱或过渡 `ADAPTER`，模型反而要在两套读写工具和两套目录规则之间来回猜。
 
-`dsh-oil-ui` 直接按 DeepSeek Harness 的原生插件机制设计：
+`dsh-oil-ui-human` 直接按 DeepSeek Harness 的原生插件机制设计：
 
 - **直接在当前工作目录读写**：不创建额外的 `projects/<uuid>` 嵌套目录，页面、样式、脚本和截图都落在当前目录，和原生 `read` / `write` / `read_image` 完全一致。
 - **只注册 `oil-ui` 独有的 5 个工具**：对比页打包、浏览器截图与交互巡检、公有领域素材检索、AI 生图修图，以及 Skill 状态检查。
@@ -117,7 +117,7 @@ git clone https://github.com/hongweifei/dsh-oil-ui-human.git
 cd dsh-oil-ui-human
 pnpm install
 pnpm pack:plugin
-dsh plugin --profile web add ./.work/dsh-oil-ui-0.3.2.tgz
+dsh plugin --profile web add ./.work/dsh-oil-ui-human-0.3.2-human.tgz
 ```
 
 </details>
@@ -127,8 +127,8 @@ dsh plugin --profile web add ./.work/dsh-oil-ui-0.3.2.tgz
 插件开箱即用：默认使用内置 `oil-ui` Skill，并自动扫描本机 `image-gen` Skill。如需自定义路径或端口，可在 `~/.dsh/cordis.patch.yml`（全局）或 `~/.dsh/profiles/web/cordis.patch.yml`（当前 profile）中按行覆盖配置（对应 [`src/config.ts`](src/config.ts)）：
 
 ```yaml
-- id: dsh-oil-ui
-  name: dsh-oil-ui
+- id: dsh-oil-ui-human
+  name: dsh-oil-ui-human
   config:
     # 可选：显式指定本地 oil-ui Skill 目录（默认使用插件内置副本；
     # 也可用环境变量 OIL_UI_SKILL_DIR，两者都只接受 SKILL.md name: oil-ui 的有效目录）

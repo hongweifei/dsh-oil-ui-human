@@ -37,7 +37,7 @@ npx skills add hongweifei/oil-ui-human
 
 安装后即可使用，无需额外配置。
 
-若使用 DeepSeek Harness，可安装原生插件 [dsh-oil-ui](https://github.com/oil-oil/dsh-oil-ui)（`dsh plugin --profile web add github:oil-oil/dsh-oil-ui`），由插件向模型提供界面与素材检索等工具。
+若使用 DeepSeek Harness，可安装原生插件 [dsh-oil-ui-human](https://github.com/hongweifei/dsh-oil-ui-human)（`dsh plugin --profile web add github:hongweifei/dsh-oil-ui-human`），由插件向模型提供界面与素材检索等工具，并内置本仓库的 Skill。
 
 ## 使用方式
 
