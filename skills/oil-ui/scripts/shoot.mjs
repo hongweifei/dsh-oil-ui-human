@@ -25,7 +25,7 @@ const HELP = `常用命令：
   --zoom <倍数,...>     默认 1；例如 --zoom 1,2，每个倍数各出一套；配 --evidence 时覆盖默认截图倍数
   --full                截整页，默认只截视口
   --selector <选择器>   只截匹配元素的区域，自动滚入视口；不与 --full、--record、--motion、--entry、--evidence 同用
-  --thumb               快速缩略图：按 0.5 倍分辨率截视口，缩短等待并跳过默认做法检查
+  --thumb               快速缩略图：按 0.5 倍分辨率截视口，缩短等待并跳过可读性检查
   --mask                另截一份遮掉全部文字的版本
   --sheet               把状态拼成并排图，配合 --mask 再拼遮字版
   --no-sheet            多目标截图时不自动生成 sheet.png
@@ -74,7 +74,7 @@ const HELP = `常用命令：
 重跑后截图仍超时则继续后面的项，返回码 1；其他协议超时或浏览器意外断开时退出。
 多项命令每完成一项向标准错误打印进度，标准输出仍是最后的汇总。
 每张图检查控制台错误、横向溢出和加载失败的图片，明细写进 report.json；
-默认做法和可读性提示写进 lint 字段。录屏需要 ffmpeg，没有时只留帧。
+可读性提示写进 lint 字段。录屏需要 ffmpeg，没有时只留帧。
 
 和 --states 一起用：
   普通截图会在每个状态执行每组 --steps；动效探测和动作录屏只从第一个状态、第一种尺寸开始，
@@ -752,15 +752,13 @@ async function check() {
   return [...problems, ...found];
 }
 
-// ---------- 默认做法提示：模型默认审美和可读性里能机械判断的几项 ----------
-// 在页面里运行，不能引用外层变量。只报不拦：命中的改掉，或在交付说明里写出理由。
+// ---------- 可读性提示：能从页面样式里机械判断的几项 ----------
+// 在页面里运行，不能引用外层变量。只报不拦：这些项影响实际阅读，应予修正；误报写一句即可。
 function lintPage() {
   const LABELS = {
-    eyebrow: "标题上方的眉标", numbered: "标题上方的编号标签", sideStripe: "彩色单侧边线",
-    gradientText: "渐变文字", nestedCards: "卡片里套卡片", emojiIcon: "表情符号当图标",
-    englishLabel: "中文界面里的英文大写标签", contrastLow: "文字对比度不达标（正文低于 4.5:1，大字低于 3:1）", grayOnColor: "有色底上的灰字",
+    contrastLow: "文字对比度不达标（正文低于 4.5:1，大字低于 3:1）", grayOnColor: "有色底上的灰字",
     smallText: "正文小于 13px", tightLeading: "多行正文行高过紧", longMeasure: "正文行太长",
-    stuck: "首屏有内容停在透明状态（出场动画没触发？）", headingSpacing: "标题离上文比离下文还近",
+    stuck: "首屏有内容停在透明状态（出场动画没触发？）",
   };
   const found = new Map();
   const describe = (el) => {
@@ -827,157 +825,6 @@ function lintPage() {
   const all = [...document.body.querySelectorAll("*")].slice(0, 8000)
     .filter((el) => !el.closest("svg,script,style,noscript,template,head,[aria-hidden='true'],#oil-mark"));
   const texts = all.filter((el) => ownText(el).length >= 2 && shown(el));
-  const cjkCount = (document.body.innerText.match(/[一-鿿]/g) || []).length;
-  const latinCount = (document.body.innerText.match(/[A-Za-z]/g) || []).length;
-  const chinese = cjkCount > 120 && cjkCount > latinCount / 2;
-
-  // 眉标与编号标签：紧贴在标题正上方、比标题小很多的一行短字
-  const flaggedAbove = new Set();
-  const headings = [...document.querySelectorAll("h1,h2,h3")].filter(shown);
-  for (const h of headings) {
-    const hs = parseFloat(css(h).fontSize);
-    if (hs < 20) continue;
-    let prev = h.previousElementSibling, node = h;
-    while (!prev && node.parentElement && node.parentElement !== document.body) { node = node.parentElement; prev = node.previousElementSibling; }
-    if (!prev || !shown(prev) || prev.closest("nav,[aria-label*='readcrumb' i],[class*='breadcrumb' i]")) continue;
-    if (prev.querySelector("a,button,input,select,textarea,img,video,canvas") || /^(A|BUTTON|INPUT|IMG)$/.test(prev.tagName)) continue;
-    const text = (prev.innerText || "").trim();
-    if (!text || text.length > 48 || text.includes("\n")) continue;
-    let holder = prev;
-    while (!ownText(holder) && holder.children.length === 1) holder = holder.children[0];
-    const s = css(holder), size = parseFloat(s.fontSize);
-    if (size > 16 || size > hs * 0.6) continue;
-    const pr = prev.getBoundingClientRect(), hr = h.getBoundingClientRect();
-    if (pr.bottom > hr.top + 4 || hr.top - pr.bottom > Math.max(32, hs * 1.2) || pr.right < hr.left || pr.left > hr.right) continue;
-    const caps = s.textTransform === "uppercase" || (/[A-Z]{3}/.test(text) && text === text.toUpperCase());
-    const tracked = parseFloat(s.letterSpacing) / size >= 0.05;
-    const mono = /mono|courier|consolas|menlo/i.test(s.fontFamily);
-    const ps = css(prev);
-    const pill = parseFloat(ps.borderTopLeftRadius) >= pr.height / 3 && (rgba(ps.backgroundColor).a > 0.1 || parseFloat(ps.borderTopWidth) >= 1);
-    const numbered = /^0\d$/.test(text) || /^(?:0?\d{1,2}|[IVX]{1,4})(?:\s*[\/·—–|]\s*|[.:]\s+)\S/.test(text);
-    if (numbered) { add("numbered", prev); flaggedAbove.add(h); }
-    else if (caps || tracked || mono || pill) { add("eyebrow", prev); flaggedAbove.add(h); }
-  }
-
-  // 标题离下文应比离上文近：标题属于它后面的内容
-  for (const h of headings) {
-    if (flaggedAbove.has(h)) continue;
-    const parent = css(h.parentElement);
-    if (parent.display.includes("grid") || (parent.display.includes("flex") && !parent.flexDirection.startsWith("column"))) continue;
-    let prev = h.previousElementSibling, next = h.nextElementSibling;
-    while (prev && !shown(prev)) prev = prev.previousElementSibling;
-    while (next && !shown(next)) next = next.nextElementSibling;
-    if (!prev || !next) continue;
-    const hr = h.getBoundingClientRect();
-    const above = hr.top - prev.getBoundingClientRect().bottom, below = next.getBoundingClientRect().top - hr.bottom;
-    if (above >= 0 && below >= 12 && above + 4 < below) add("headingSpacing", h, "上 " + Math.round(above) + "px，下 " + Math.round(below) + "px");
-  }
-
-  const hasCurrentSemantics = (n) => {
-    if (!n) return false;
-    const ariaCurrent = typeof n.getAttribute === "function" ? n.getAttribute("aria-current") : null;
-    if (ariaCurrent && ariaCurrent !== "false") return true;
-    const ariaSelected = typeof n.getAttribute === "function" ? n.getAttribute("aria-selected") : null;
-    if (ariaSelected === "true") return true;
-    if (typeof n.matches === "function" && n.matches("[aria-current]:not([aria-current='false']),[aria-selected='true']")) return true;
-    const cls = typeof n.className === "string" ? n.className : "";
-    return /\b(is-)?(active|current|selected)\b/i.test(cls);
-  };
-  const isNavCurrent = (node) => {
-    if (!node.closest("nav,[role='navigation'],[role='tablist']")) return false;
-    if (hasCurrentSemantics(node)) return true;
-    if (node.tagName === "LI" && typeof node.querySelector === "function") {
-      return hasCurrentSemantics(node.querySelector("a,button,[role='tab'],[role='menuitem']"));
-    }
-    return false;
-  };
-
-  for (const el of all) {
-    const s = css(el);
-    if (s.display === "none") continue;
-    const r = el.getBoundingClientRect();
-    if (!r.width || !r.height) continue;
-
-    // 单侧彩色边线：边框或贴边的伪元素，中性色的结构分隔线、blockquote 引文、导航当前选中指示不算
-    const isQuoteOrNav = el.matches("blockquote") || isNavCurrent(el);
-    if (!isQuoteOrNav) {
-      const sides = { left: parseFloat(s.borderLeftWidth), right: parseFloat(s.borderRightWidth), top: parseFloat(s.borderTopWidth), bottom: parseFloat(s.borderBottomWidth) };
-      for (const side of ["left", "right"]) {
-        const w = sides[side], others = Math.max(sides[side === "left" ? "right" : "left"], sides.top, sides.bottom);
-        const c = rgba(s[side === "left" ? "borderLeftColor" : "borderRightColor"]);
-        if (w >= 2 && w >= others * 2 && /solid|double/.test(s[side === "left" ? "borderLeftStyle" : "borderRightStyle"])
-          && c.a >= 0.4 && chroma(c) >= 0.15 && r.height >= 16 && r.width > sides.left + sides.right + 24 && r.height < innerHeight * 0.8) add("sideStripe", el, w + "px");
-      }
-      for (const pseudo of ["::before", "::after"]) {
-        const p = css(el, pseudo);
-        if (p.content === "none" || p.position !== "absolute") continue;
-        const pw = parseFloat(p.width), ph = parseFloat(p.height), c = rgba(p.backgroundColor);
-        if (pw >= 2 && pw <= 8 && ph >= r.height * 0.6 && r.height >= 24 && r.width > 60 && c.a >= 0.4 && chroma(c) >= 0.15
-          && (parseFloat(p.left) <= 2 || parseFloat(p.right) <= 2)) add("sideStripe", el, pseudo);
-      }
-    }
-
-    if (/text/.test(s.backgroundClip + " " + s.getPropertyValue("-webkit-background-clip")) && /gradient/.test(s.backgroundImage) && (el.textContent || "").trim()) add("gradientText", el);
-  }
-
-  // 卡片里套卡片：有边框或阴影的圆角块，放在另一个圆角块里
-  const boundary = (el) => {
-    if (el.matches('[role="listbox"],[role="menu"],[role="dialog"],[role="tooltip"],[popover]')) return true;
-    const position = css(el).position;
-    if (position === "fixed") return true;
-    if (position !== "absolute" || !el.parentElement) return false;
-    const r = el.getBoundingClientRect(), parent = el.parentElement.getBoundingClientRect();
-    // A positioned card inside a panel is still a card; a popup crosses its DOM parent's boundary.
-    return r.left < parent.left - 1 || r.top < parent.top - 1 || r.right > parent.right + 1 || r.bottom > parent.bottom + 1;
-  };
-  const content = (el) => (el.textContent || "").trim() || el.querySelector("img,svg,canvas,video,input,select,textarea,button,a,[contenteditable]");
-  const card = (el, inner) => {
-    const s = css(el), r = el.getBoundingClientRect();
-    if (boundary(el) || !content(el)) return false;
-    if (r.width < 120 || r.height < 56 || /^(BUTTON|A|INPUT|SELECT|TEXTAREA|IMG|VIDEO|CANVAS|LABEL|SUMMARY|PRE|CODE)$/.test(el.tagName)) return false;
-    if (parseFloat(s.borderTopLeftRadius) < 6) return false;
-    const border = ["Top", "Right", "Bottom", "Left"].every((k) => parseFloat(s["border" + k + "Width"]) >= 1 && rgba(s["border" + k + "Color"]).a > 0.05);
-    const shadow = s.boxShadow !== "none";
-    const fill = rgba(s.backgroundColor).a > 0.05;
-    if (inner) return border || (shadow && fill);
-    return (border || shadow || fill) && r.width * r.height < innerWidth * innerHeight * 0.6;
-  };
-  const rCompact = (el) => el.getBoundingClientRect().height <= 100;
-  for (const el of all) {
-    if (!card(el, true)) continue;
-    for (let up = el.parentElement, depth = 0; up && up !== document.body && depth < 8; up = up.parentElement, depth++) {
-      if (boundary(up)) break;
-      // A compact attachment with its own removal/retry control is editor content, not another panel.
-      const editor = up.matches("form,[role='textbox']") || up.querySelector("textarea,[contenteditable='true'],[contenteditable='']");
-      if (editor && rCompact(el) && el.querySelector("button,a,[role='button']") && !el.querySelector("h1,h2,h3,h4,section,article,textarea,[contenteditable]")) break;
-      if (card(up, false)) { add("nestedCards", el, "外层 " + describe(up).split("「")[0]); break; }
-    }
-  }
-
-  const emoji = /^(?:\p{Emoji_Presentation}|\p{Extended_Pictographic}️)(?:‍\p{Extended_Pictographic}️?)*$/u;
-  const reaction = (el) => {
-    const button = el.closest("button,[role='button']");
-    if (!button) return false;
-    const text = (button.textContent || "").trim();
-    const symbol = ownText(el);
-    // aria-pressed alone also describes toolbar toggles: require an emoji-only value or an adjacent count.
-    return (button.hasAttribute("aria-pressed") && text === symbol) ||
-      (text.startsWith(symbol) && /^\s*\d+(?:[.,]\d+)?\s*$/.test(text.slice(symbol.length)));
-  };
-  const emojiHits = texts.filter((el) => emoji.test(ownText(el)) && !el.closest("p,blockquote,li > p,[role='listbox'],[role='menu'],[popover]") && !reaction(el));
-  if (emojiHits.length >= 2) emojiHits.forEach((el) => add("emojiIcon", el));
-
-  if (chinese) {
-    const labels = texts.filter((el) => {
-      const t = (el.innerText || "").trim();
-      if (!t || t.length > 40 || /[一-鿿]/.test(t) || el.closest("code,pre,kbd,samp")) return false;
-      const letters = (t.match(/[A-Za-z]/g) || []).length;
-      const upper = css(el).textTransform === "uppercase" || (/[A-Z]{2}/.test(t) && t === t.toUpperCase());
-      return upper && (letters >= 8 || /[A-Za-z]{2,}\s+[A-Za-z]{2,}/.test(t));
-    });
-    if (labels.length >= 2) labels.forEach((el) => add("englishLabel", el));
-  }
-
   const isAncestor = (anc, node) => {
     for (let p = node; p; p = p.parentElement) if (p === anc) return true;
     return false;
@@ -1067,7 +914,7 @@ async function lint() {
   try {
     return await evaluate(`(${lintPage.toString()})()`);
   } catch (error) {
-    return [{ rule: "lintError", label: "默认做法检查没跑完", count: 1, examples: [error.message.slice(0, 160)] }];
+    return [{ rule: "lintError", label: "可读性检查没跑完", count: 1, examples: [error.message.slice(0, 160)] }];
   }
 }
 const lintLine = (items) => items.map((i) => `${i.label} ${i.count} 处（${i.examples.join("，")}）`).join("；");
@@ -2049,7 +1896,7 @@ async function captureBatch(selectedStates, selectedZooms, selectedGroups, useMa
         await screenshot(file, flags.has("full"), selector ? await selectorClip() : thumb ? { x: 0, y: 0, width: w, height: h, scale: 0.5 } : null);
         const issues = await check(), hints = thumb ? [] : await lint();
         entry = { file: basename(file), ...meta, ...(thumb ? { thumb: true } : {}), animationWaitMs, issues, lint: hints };
-        lines.push(`${basename(file)}${issues.length ? "  ⚠ " + issues.join("；") : ""}${hints.length ? "  ◇ 默认做法提示：" + lintLine(hints) : ""}`);
+        lines.push(`${basename(file)}${issues.length ? "  ⚠ " + issues.join("；") : ""}${hints.length ? "  ◇ 可读性提示：" + lintLine(hints) : ""}`);
         report.push(entry); shots.push({ path: file, label: state || "page" });
         if (batchMode) targetShots.push({ path: file, label: [meta.name, state, suffix].filter(Boolean).join(" · ") });
       });
@@ -2174,7 +2021,7 @@ for (const l of lines) console.log(`- ${l}`);
 const total = report.reduce((n, r) => n + r.issues.length, 0);
 if (report.length) console.log(total ? `发现 ${total} 个问题，详见 report.json` : `检查通过：没有控制台错误、横向溢出或加载失败的图片${flags.has("motion") ? "，三段动效都检测到了" : ""}`);
 const hinted = [...new Set(report.flatMap((r) => (r.lint || []).map((i) => i.label)))];
-if (hinted.length) console.log(`默认做法提示 ${hinted.length} 类：${hinted.join("、")}。可读性几项（对比度不达标、正文小于 13px、行高过紧、停在透明）要改；其余改掉，或在交付说明里写出它怎样服务方向，误报也写一句。详见 report.json 的 lint`);
+if (hinted.length) console.log(`可读性提示 ${hinted.length} 类：${hinted.join("、")}。这几项影响实际阅读，应予修正；误报在交付说明里写一句即可。详见 report.json 的 lint`);
 const reviewerManual = resolve(dirname(process.argv[1]), "../references/reviewer-manual.md");
 if (evidence && existsSync(reviewerManual)) console.log(`评审交接：将 ${reviewerManual} 与证据目录 ${out} 传给独立评审子 Agent`);
 finishing = true;

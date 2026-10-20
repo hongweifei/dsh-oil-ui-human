@@ -1,4 +1,4 @@
-// Reviewed public runtime distribution for oil-ui 0.23.6.
+// Reviewed public runtime distribution for the forked oil-ui skill (oil-ui-human).
 export const publicSkillFiles = Object.freeze([
   ".gitignore",
   "LICENSE",
@@ -11,7 +11,6 @@ export const publicSkillFiles = Object.freeze([
   "assets/style-explorer.html",
   "assets/vendor/alpine.min.js",
   "references/design-direction.md",
-  "references/direction-persuasion.md",
   "references/layout-and-viewport.md",
   "references/media.md",
   "references/motion.md",
@@ -23,13 +22,9 @@ export const publicSkillFiles = Object.freeze([
   "references/visual-language.md",
   "references/visual-review.md",
   "scripts/build_explorer.py",
-  "scripts/check_update.py",
-  "scripts/check_update.sh",
   "scripts/curate-media.mjs",
-  "scripts/recommend_once.py",
   "scripts/shoot.mjs",
   "tests/test_build_explorer.py",
-  "tests/test_check_update.py",
   "tests/test_curate_media.py",
   "tests/test_shoot.py"
 ])

@@ -745,9 +745,6 @@ def build(manifest: Path, output: Path, *, force: bool = False) -> dict:
     if output.exists() and not force:
         raise FileExistsError(f"输出已存在：{output}。要更新它就加 --force，要保留它就用 --output 换一个路径")
     template = embed_local_files(TEMPLATE.read_text(encoding="utf-8"), TEMPLATE.parent, SKILL_ROOT, inputs)
-    skill_file = SKILL_ROOT / "SKILL.md"
-    skill = skill_file.read_text(encoding="utf-8") if skill_file.is_file() else ""
-    data["edition"] = "pro" if re.search(r"^name:\s*oil-ui-pro\s*$", skill, re.MULTILINE) else "open"
     if template.count(MARKER) != 1:
         raise ValueError("模板数据入口缺失或重复")
     if template.count(CONNECT_CSP) != 1:

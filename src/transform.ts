@@ -1,7 +1,7 @@
 import { chmod, copyFile, lstat, mkdir, readFile, readdir, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, sep } from 'node:path';
 
-export const TRANSFORM_VERSION = '3';
+export const TRANSFORM_VERSION = '4';
 
 const EXCLUDED_NAMES = new Set(['.git', '.DS_Store', '__pycache__']);
 const DOC_ONLY_PATHS = new Set(['assets/readme', 'README.en.md']);
@@ -27,7 +27,7 @@ const NATIVE_TOOL_COMMANDS_SECTION = `### 常用调用方式（\`oil_ui_shoot\`�
 
 状态靠地址参数进入，所以页面要能用 \`?state=<名字>\` 直接打开每个状态。\`steps\` 动作写法（分号分隔）：\`click <选择器>\`、\`hover <选择器>\`、\`dblclick <选择器>\`、\`waitfor <选择器>\`、\`drag <选择器> <dx> <dy>\`、\`type <选择器> <文字>\`、\`fill <选择器> <文字>\`、\`select <选择器> <值>\`、\`key <按键>\`、\`scroll <dy>\`、\`wait <毫秒>\`。
 
-### 检索和下载真实素材（\`oil_ui_media\`）
+### 检索和下载真实素材
 
 需要真实材质贴图、设计器物、历史摄影、工程测绘图、古地图、科学版画或 NASA 视频时，调用 \`oil_ui_media\`：
 
@@ -57,30 +57,26 @@ export function transformSkillMarkdown(relativePath: string, raw: string): strin
 
   if (normalized === 'SKILL.md') {
     let out = raw;
-    // Remove bash allowed-tools block from frontmatter
+    // Remove bash allowed-tools block from frontmatter (defensive: custom sources may still carry one)
     out = out.replace(/\r?\nallowed-tools:\r?\n(?:\s+-\s+[^\r\n]+\r?\n)+/, '\n');
     // Update compatibility line in frontmatter
     out = out.replace(
       /compatibility:\s*"[^"]*"/,
       'compatibility: "通过 oil_ui_shoot、oil_ui_media、oil_ui_image、oil_ui_explorer、oil_ui_skill_status 与 read_image、subagent 完成截图取证、真实素材检索、AI 生图修图、对比页组装和独立视觉评审。"',
     );
-    // Replace ## 开始前 section
+    // Replace ## 方法体系 section with native tool routing
     out = out.replace(
-      /## 开始前\r?\n\r?\n[\s\S]*?(?=\r?\n## 选择范围)/,
-      `## 开始前\n\n先调用 \`oil_ui_skill_status\` 查看当前激活版本、版本更新提示（\`updateNotice\`）与生图工具可用状态（\`imageGenAvailable\`）。若 \`updateNotice\` 非空，照常完成任务并在最终回复末尾转述一次；只有用户明确要求更新时才调用 \`oil_ui_skill_status({ "update": true })\`。截图录屏用 \`oil_ui_shoot\`，素材检索与下载用 \`oil_ui_media\`，生图与改图用 \`oil_ui_image\`，风格对比页生成用 \`oil_ui_explorer\`，看图用 \`read_image\`，独立评审用 \`subagent\`。制作大型界面时拆分为 \`index.html\`、\`styles.css\`、\`app.js\` 分步写入。`,
+      /## 方法体系\r?\n\r?\n[\s\S]*?(?=\r?\n## 范围界定)/,
+      `## 方法体系\n\n相关工作方法与评审协议均位于本目录之下；截图、素材、生图与对比页能力由插件工具 \`oil_ui_shoot\`、\`oil_ui_media\`、\`oil_ui_image\`、\`oil_ui_explorer\` 与 \`oil_ui_skill_status\` 提供，工具用法详见 [工具指南](references/tools.md)，无需为此单独加载其他 Skill，也不需要执行本目录内的脚本。先调用 \`oil_ui_skill_status\` 确认生图工具可用状态（\`imageGenAvailable\`）与 Skill 目录。前端实现方案应遵循项目既有的技术规范与约定，若宿主环境或项目规范明确要求加载特定 Skill，则按规范要求执行。相对路径引用均从本文件所在目录开始计算。`,
     );
     // Replace CLI flags in body text with tool parameters
     out = out
-      .replace(/用截图工具的 `--compare` 和参考图比对/g, '用 `oil_ui_shoot` 的 `compare` 参数和参考图比对')
+      .replace(/使用截图工具的 `--compare` 参数/g, '使用 `oil_ui_shoot` 的 `compare` 参数')
+      .replace(/截图工具的 `--compare` 参数/g, '`oil_ui_shoot` 的 `compare` 参数')
+      .replace(/一条 `--evidence` 命令即可输出/g, '一次 `oil_ui_shoot`（`evidence: true`）调用即可输出')
       .replace(/一条 `--evidence` 命令就能出齐/g, '调用 `oil_ui_shoot`（`evidence: true`）就能出齐');
-    // Replace ## 完整版提示 section in open-source edition
-    out = out.replace(
-      /## 完整版提示\r?\n\r?\n[\s\S]*$/,
-      `## 完整版提示\n\n首次使用开源版 \`oil-ui\` 时，\`oil_ui_skill_status\` 会返回非空的 \`recommendOnceNotice\`（状态写入 \`~/.local/state/oil-ui/recommended-oil-ui-pro\`，后续调用为 \`null\`）。仅当 \`recommendOnceNotice\` 非空时，在最终回复末尾按用户语言提示一次完整版 \`oil-ui-pro\`（https://ui.oiloil.org/pro/ ，英文对话用 https://ui.oiloil.org/en/pro/）；为 \`null\` 时不提，不在任务中途插入。\n`,
-    );
     // Fallback replacements for standalone script mentions in custom or minimal SKILL.md files
     out = out
-      .replace(/[^\r\n]*check_update\.sh[^\r\n]*/g, '先调用 `oil_ui_skill_status` 查看当前激活版本、版本更新提示与生图工具可用状态。')
       .replace(/`scripts\/shoot\.mjs`/g, '`oil_ui_shoot`')
       .replace(/`scripts\/curate-media\.mjs`/g, '`oil_ui_media`')
       .replace(/`scripts\/build_explorer\.py`/g, '`oil_ui_explorer`');
@@ -89,22 +85,22 @@ export function transformSkillMarkdown(relativePath: string, raw: string): strin
 
   if (normalized === 'references/tools.md') {
     let out = raw;
-    out = out.replace(/默认 `390x844`/g, '默认 `1440x900`');
-    // Replace the intro CLI note between `# 工具` and `## 截图和录屏`
+    // Replace the intro CLI note between `# 工具指南` and `## 截图和录屏`
     out = out.replace(
-      /^# 工具\r?\n\r?\n[\s\S]*?(?=\r?\n## 截图和录屏)/,
-      '# 工具\n\n所有路径相对于当前工作目录解析。查看图片用 `read_image`，派发独立视觉评审用 `subagent`。',
+      /^# 工具指南\r?\n\r?\n[\s\S]*?(?=\r?\n## 截图和录屏)/,
+      '# 工具指南\n\n所有路径相对于当前工作目录解析。查看图片用 `read_image`，派发独立视觉评审用 `subagent`。截图、素材检索、生图与对比页组装均通过插件提供的 `oil_ui_shoot`、`oil_ui_media`、`oil_ui_image`、`oil_ui_explorer` 工具完成，不需要执行本目录内的脚本。',
     );
-    // Replace CLI command blocks (`### 常用命令` .. `### 检索和下载真实素材`) before `### 看结果`
+    // Replace CLI command blocks (`### 常用命令` .. `### 查看结果`)
     out = out.replace(
-      /### (?:常用命令|常用调用方式（`oil_ui_shoot`）)\r?\n\r?\n[\s\S]*?(?=\r?\n### 看结果)/,
+      /### (?:常用命令|常用调用方式（`oil_ui_shoot`）)\r?\n\r?\n[\s\S]*?(?=\r?\n### 查看结果)/,
       NATIVE_TOOL_COMMANDS_SECTION,
     );
     // Replace inline CLI mentions in remaining methodology paragraphs
     out = out
-      .replace(/一条命令/g, '一次 `oil_ui_shoot` 调用')
+      .replace(/使用 `--evidence` 一次取齐/g, '用 `oil_ui_shoot`（`evidence: true`）一次取齐')
       .replace(/用 `--evidence` 一次取齐/g, '用 `oil_ui_shoot`（`evidence: true`）一次取齐')
-      .replace(/命令输出里以“默认做法提示”列出/g, '`oil_ui_shoot` 返回的 `domHints` 与输出里以“默认做法提示”列出')
+      .replace(/一条命令/g, '一次 `oil_ui_shoot` 调用')
+      .replace(/命令输出中以"可读性提示"列出/g, '以 `oil_ui_shoot` 返回的 `domHints` 与输出中的"可读性提示"列出')
       .replace(/`node\s+[^\r\n`]*shoot\.mjs[^\r\n`]*`/g, '`oil_ui_shoot`')
       .replace(/`node\s+[^\r\n`]*curate-media\.mjs[^\r\n`]*`/g, '`oil_ui_media`');
     return out;
@@ -112,10 +108,10 @@ export function transformSkillMarkdown(relativePath: string, raw: string): strin
 
   if (normalized === 'references/style-explorer.md') {
     return raw
-      .replace(/每个字段的写法和限制见生成器的 `--help`。/g, '字段与限制以 `oil_ui_explorer` 的参数说明及本页 manifest 示例为准。')
+      .replace(/每个字段的写法与限制见生成器的 `--help`。/g, '字段与限制以 `oil_ui_explorer` 的参数说明及本页 manifest 示例为准。')
       .replace(
-        /## 生成和打开\r?\n\r?\n```text\r?\npython3 <skill>\/scripts\/build_explorer\.py <manifest 所在目录>\/manifest\.json\r?\n```\r?\n\r?\n[^\r\n]+/,
-        `## 生成和打开\n\n调用 \`oil_ui_explorer\` 生成对比页：\n\n\`\`\`json\n{\n  "manifest": "explore/manifest.json",\n  "out": "style-explorer.html"\n}\n\`\`\`\n\n\`manifest\` 可传 \`manifest.json\` 的相对路径，也可直接传 JSON 对象；不传时工具会自动查找工作目录下的 \`manifest.json\` 或 \`explore/a.html\`、\`b.html\`、\`c.html\`。对比页默认生成在工作目录根部的 \`style-explorer.html\`，并返回预览地址 \`explorerUrl\`。`,
+        /## 生成与打开\r?\n\r?\n```text\r?\npython3 <skill>\/scripts\/build_explorer\.py <manifest 所在目录>\/manifest\.json\r?\n```\r?\n\r?\n[^\r\n]+/,
+        `## 生成与打开\n\n调用 \`oil_ui_explorer\` 生成对比页：\n\n\`\`\`json\n{\n  "manifest": "explore/manifest.json",\n  "out": "style-explorer.html"\n}\n\`\`\`\n\n\`manifest\` 可传 \`manifest.json\` 的相对路径，也可直接传 JSON 对象；不传时工具会自动查找工作目录下的 \`manifest.json\` 或 \`explore/a.html\`、\`b.html\`、\`c.html\`。对比页默认生成在工作目录根部的 \`style-explorer.html\`，并返回预览地址 \`explorerUrl\`。输入有误时，工具会一次性列出全部需要修正之处，按提示修改后重新调用。组装失败时，将 manifest 和候选留给用户直接查看，说明对比页尚未组装完成，不临时另写一套工具。`,
       )
       .replace(
         /`node <skill>\/scripts\/shoot\.mjs <manifest 所在目录> --size desktop --thumb --out shots\/explore`/g,
@@ -126,12 +122,14 @@ export function transformSkillMarkdown(relativePath: string, raw: string): strin
   if (normalized === 'references/media.md') {
     return raw
       .replace(/`--sheet`/g, '`oil_ui_media` 的 `sheet: true`')
-      .replace(/用 `curate-media\.mjs` 从 Poly Haven/g, '用 `oil_ui_media` 从 Poly Haven')
-      .replace(/按宿主生成工具自己的输入和编辑规则来。/g, '用 `oil_ui_image` 生成或编辑（支持 `mode: "generate"` 文生图、`mode: "edit"` 传入 1–16 张本地参考图做同模多材质变体、以及 `background: "transparent"` 透明底抠图）。');
+      .replace(/`curate-media\.mjs` 从 Poly Haven/g, '`oil_ui_media` 从 Poly Haven')
+      .replace(/遵循宿主生成工具自身的输入与编辑规则。/g, '需要生成或编辑图片时用 `oil_ui_image`（支持 `mode: "generate"` 文生图、`mode: "edit"` 传入 1–16 张本地参考图做同模多材质变体、以及 `background: "transparent"` 透明底抠图）。');
   }
 
   if (normalized === 'references/layout-and-viewport.md') {
-    return raw.replace(/截图工具的 `--compare`/g, '`oil_ui_shoot` 的 `compare` 参数');
+    return raw
+      .replace(/使用截图工具的 `--compare` 参数/g, '使用 `oil_ui_shoot` 的 `compare` 参数')
+      .replace(/截图工具的 `--compare` 参数/g, '`oil_ui_shoot` 的 `compare` 参数');
   }
 
   if (normalized === 'references/visual-review.md') {
@@ -145,25 +143,14 @@ export function transformSkillMarkdown(relativePath: string, raw: string): strin
         '按照你系统提示词中已内置的《视觉与交互评审手册》【存量已有界面润色评审】标准',
       )
       .replace(
-        /模板里的路径换成本 Skill 目录下的绝对路径：子 Agent 的工作目录不是本目录。/g,
-        '子 Agent 启动时已由插件自动将《视觉与交互评审手册》（`references/reviewer-manual.md`）注入其系统提示词，主 Agent 只需调用 `subagent` 传入下方交接清单与对应模式指令，无需附带手册路径，也无需让子 Agent 再次读取手册。',
+        /模板中的路径应替换为本 Skill 目录下的绝对路径：子代理的工作目录不是本目录。/g,
+        '子代理启动时已由插件自动将《视觉与交互评审手册》（`references/reviewer-manual.md`）注入其系统提示词，主 Agent 只需调用 `subagent` 传入下方交接清单与对应模式指令，无需附带手册路径，也无需让子代理再次读取手册。',
       );
-  }
-
-  if (normalized === 'references/review-loop.md') {
-    return raw.replace(
-      /模板里的路径按 \[派发协议\]\(visual-review\.md\) 换成绝对路径。/g,
-      '子 Agent 启动时系统提示词中已自动注入本目录（`references/`）的绝对路径，主 Agent 直接使用上表模板即可，子 Agent 可按该路径读取 `review-modes.md` 与 `play-craft.md`。',
-    );
   }
 
   if (normalized === 'references/reviewer-manual.md') {
     return raw
-      .replace(/能用 `oil_ui_shoot` 时，用它出缩略图（`size: "480x300"` 或 `"180x390"`）和遮字图（`mask: true`），并用 `read_image` 查看截图。/g, '能用 `oil_ui_shoot` 时，保持原始桌面或手机视口截图，再按原比例缩放到 480px 或 180px 宽；遮字图用 `mask: true`，并用 `read_image` 查看。')
-      .replace(
-        /能用截图工具时，用它出缩略图和遮字图。/g,
-        '能用 `oil_ui_shoot` 时，用它出缩略图（保持桌面或手机的原始视口截图，再按原比例缩放到 480px 或 180px 宽，不能改成窄视口重新截图）和遮字图（`mask: true`），并用 `read_image` 查看截图。',
-      )
+      .replace(/可以使用截图工具生成缩略图与遮字图辅助判断。/g, '能用 `oil_ui_shoot` 时，用它出缩略图（保持原始桌面或手机视口截图，再按原比例缩放到 480px 或 180px 宽，不能改成窄视口重新截图）和遮字图（`mask: true`），并用 `read_image` 查看截图。')
       .replace(/\[游玩\]\(play\.md\)/g, '[游玩](references/play.md)');
   }
 
@@ -171,7 +158,7 @@ export function transformSkillMarkdown(relativePath: string, raw: string): strin
 }
 
 export function isHarnessNativeSkillMarkdown(raw: string): boolean {
-  return raw.includes('oil_ui_skill_status') && !raw.includes('check_update.sh');
+  return raw.includes('oil_ui_skill_status');
 }
 
 export async function compileHarnessSkillTree(

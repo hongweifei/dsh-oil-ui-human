@@ -377,7 +377,7 @@ console.log(JSON.stringify(result));
                 self.assertEqual(run.returncode, 0, run.stderr)
                 observed = json.loads(run.stdout)
                 self.assertEqual(observed["lang"], table[lang]["htmlLang"])
-                self.assertEqual(observed["title"], table[lang]["projectTitle"].replace("{project}", "Demo").replace("{edition}", " Pro" if self.payload(page)["edition"] == "pro" else ""))
+                self.assertEqual(observed["title"], table[lang]["projectTitle"].replace("{project}", "Demo"))
                 self.assertEqual(observed["initial"], {"loupe": True, "current": "b", "mobile": "true", "cards": 2, "descriptions": True})
                 self.assertEqual(set(observed["saved"]), {"layout", "viewport", "current", "chosen"})
                 self.assertEqual(observed["saved"]["chosen"], "b")
@@ -939,26 +939,24 @@ console.log(JSON.stringify(result));
         with self.assertRaises(ValueError):
             builder.build(self.manifest, self.output)
 
-    def test_brand_assets_and_edition_survive_relocation(self):
+    def test_brand_assets_survive_relocation(self):
         copy = self.folder / "relocated"
         shutil.copytree(ROOT / "scripts", copy / "scripts", ignore=shutil.ignore_patterns("__pycache__"))
         shutil.copytree(ROOT / "assets", copy / "assets")
         logo = "data:image/png;base64," + base64.b64encode((ROOT / "assets/logo.png").read_bytes()).decode("ascii")
         font = "data:font/ttf;base64," + base64.b64encode((ROOT / "assets/fonts/instrument-serif/InstrumentSerif-Regular.ttf").read_bytes()).decode("ascii")
-        for name, edition in (("oil-ui-pro", "pro"), ("oil-ui", "open")):
-            with self.subTest(edition=edition):
-                (copy / "SKILL.md").write_text("---\nname: " + name + "\n---\n", encoding="utf-8")
-                output = self.folder / (edition + ".html")
-                run = subprocess.run([sys.executable, str(copy / "scripts/build_explorer.py"), str(self.manifest),
-                                      "--output", str(output)], cwd=self.folder, capture_output=True, text=True, encoding="utf-8")
-                self.assertEqual(run.returncode, 0, run.stderr)
-                page = output.read_text(encoding="utf-8")
-                self.assertEqual(self.payload(page)["edition"], edition)
-                self.assertIn(logo, page)
-                self.assertIn(font, page)
-                self.assertNotIn('href="logo.png"', page)
-                self.assertNotIn('src="logo.png"', page)
-                self.assertNotIn('url("fonts/', page)
+        (copy / "SKILL.md").write_text("---\nname: oil-ui\n---\n", encoding="utf-8")
+        output = self.folder / "relocated.html"
+        run = subprocess.run([sys.executable, str(copy / "scripts/build_explorer.py"), str(self.manifest),
+                              "--output", str(output)], cwd=self.folder, capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(run.returncode, 0, run.stderr)
+        page = output.read_text(encoding="utf-8")
+        self.assertIn(logo, page)
+        self.assertIn(font, page)
+        self.assertNotIn('href="logo.png"', page)
+        self.assertNotIn('src="logo.png"', page)
+        self.assertNotIn('url("fonts/', page)
+        self.assertNotIn("pro-badge", page)
 
     def test_every_manifest_problem_is_reported_in_one_pass(self):
         self.data["schemaVersion"] = 2

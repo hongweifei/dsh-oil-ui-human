@@ -13,7 +13,7 @@ const skillsDirectory = path.resolve(scriptDirectory, '..', 'skills')
 const destinationDirectory = path.join(skillsDirectory, 'oil-ui')
 const manifestPath = path.join(skillsDirectory, 'oil-ui.manifest.json')
 const excludedNames = new Set(['.git', '.DS_Store', '__pycache__'])
-// Documentation-only artwork and duplicate English README are outside the 32-file runtime distribution.
+// Documentation-only artwork and duplicate English README are outside the runtime distribution.
 const documentationOnly = new Set(['assets/readme', 'README.en.md'])
 
 function usage() {
@@ -149,7 +149,7 @@ async function verifyCopy(root, entries) {
 }
 
 async function main() {
-  const sourceArgument = process.argv[2] ?? process.env.OIL_UI_REPO ?? path.resolve(scriptDirectory, '..', '..', 'oil-ui')
+  const sourceArgument = process.argv[2] ?? process.env.OIL_UI_REPO ?? path.resolve(scriptDirectory, '..', '..', 'oil-ui-human')
   if (!sourceArgument || sourceArgument.startsWith('--')) {
     usage()
     return

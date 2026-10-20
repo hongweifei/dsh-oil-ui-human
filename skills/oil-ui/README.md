@@ -21,25 +21,23 @@ Oil UI is an interface design skill for AI agents. It explores a few genuinely d
 7. **You decide what looks right.** The previews go on one comparison page. You pick one and say what you like and dislike, and it tightens the design around your feedback before going further.
 8. **Trust the real screen.** When a page is done, it opens it at desktop and mobile sizes and checks screenshots. You can also bring in a reviewer who hasn't seen the work in progress. Last comes a round of subtraction: one focal point per page, and no copy, lines, or boxes that don't help you understand it.
 
-For more usable interfaces, existing project redesigns, or effects such as light trails and dot patterns, see [Oil UI Pro](https://ui.oiloil.org/en/pro/?utm_source=github&utm_medium=referral&utm_campaign=readme-en). The differences are listed [below](#open-source-and-pro).
-
 ## Installation
 
 Send this to an agent that can install skills:
 
 ```text
-Install this skill for me: run npx skills add oil-oil/oil-ui
+Install this skill for me: run npx skills add hongweifei/oil-ui-human
 ```
 
 Or run this in your terminal:
 
 ```bash
-npx skills add oil-oil/oil-ui
+npx skills add hongweifei/oil-ui-human
 ```
 
-It's ready to use right after installation, with nothing to configure. When a new version is out, your agent mentions it at the end of a reply; ask it to update whenever you like. If you already have Oil UI Pro, you don't need the open-source version. Installing both makes them compete for the same requests.
+It's ready to use right after installation, with nothing to configure.
 
-If you use DeepSeek Harness, install the native plugin [dsh-oil-ui](https://github.com/oil-oil/dsh-oil-ui) (`dsh plugin --profile web add github:oil-oil/dsh-oil-ui`; it includes the free edition and automatically detects a local Oil UI Pro installation).
+If you use DeepSeek Harness, install the native plugin [dsh-oil-ui](https://github.com/oil-oil/dsh-oil-ui) (`dsh plugin --profile web add github:oil-oil/dsh-oil-ui`), which exposes interface and media-search tools to the model.
 
 ## Usage
 
@@ -60,37 +58,6 @@ Share any brand assets, screenshots, or existing project you have. It can start 
 </p>
 
 When you want to compare designs, it puts them side by side on one page. They can be HTML files, images, or running development pages, and the current version can go first as a baseline. You can switch between desktop and mobile sizes, open each one at actual size, and browse with the arrow keys. Click “Select” on the one you like, paste the copied sentence into your agent, and it carries on from there.
-
-## Open source and Pro
-
-<p align="center">
-  <img src="./assets/readme/proof-van-gogh.webp" width="100%" alt="Full version style comparison page: three directions for a Van Gogh exhibition page, titled To Theo, Brushstrokes, and East Window">
-</p>
-
-The open-source version takes a new page from a blank start to a good-looking design. Pro builds on that: it makes interfaces easier to use, improves existing projects, and raises the quality bar with stricter review and polishing.
-
-| | Oil UI (open source) | Oil UI Pro |
-| --- | :---: | :---: |
-| Design direction: product category, tone, distinct directions, comparison page | ✓ | ✓ |
-| Visuals: hierarchy, typography, color, spacing, imagery, and motion | ✓ | ✓ |
-| Memorable moments and scroll storytelling (parallax, continuous shots) | ✓ | ✓ |
-| Screenshot recreation | ✓ | ✓ |
-| Pacing, feel, generated assets, and real-time 3D for mini-games | ✓ | ✓ |
-| Independent review | Scored, with issues listed | Repeated review and revision aiming for 9/10; checks whether directions overlap; completes real tasks on the page |
-| Polish: checks for AI design defaults, a detail checklist, and how to simplify | | ✓ |
-| Usability: interactions and states, forms, dialogs and popovers, desktop and mobile layouts | | ✓ |
-| Dashboards and tools: workspace layouts chosen for the product, with one style throughout | | ✓ |
-| Existing projects: separate approaches for a UI refresh, a flow fix, and a new feature | Tells you which one you need | ✓ |
-| Polish a single component to the extreme | | ✓ |
-| 19 card prototypes with code and spatial expansion containers | | ✓ |
-| Effects such as light trails, dot patterns, and flowing gradients | | ✓ |
-| Scene layouts, visuals, and state checks for mini-games | | ✓ |
-
-Oil UI Pro costs $9.99: a one-time purchase with lifetime updates. Purchase it at [ui.oiloil.org/pro](https://ui.oiloil.org/en/pro/?utm_source=github&utm_medium=referral&utm_campaign=readme-en).
-
-## Version checks
-
-Each time it is used, the Skill checks for a newer version, going online at most once every 10 minutes. It only reads the public version list at ui.oiloil.org and uploads nothing from your project. By default it only tells you about an update; it downloads and replaces nothing unless you explicitly ask it to update. Results are cached in `~/.local/state/oil/` (or `XDG_STATE_HOME` when set; `%LOCALAPPDATA%\oil\` on Windows). It needs Python 3. Set `OIL_NO_UPDATE_CHECK=1` to turn it off.
 
 ## Use with
 

@@ -154,7 +154,7 @@ export class DesignWorkbench {
 
   private async script(name: string, cwd?: string): Promise<string> {
     const active = await resolveActiveSkill({ ...this.skillOptions, cwd });
-    const scriptRoot = active.sourceDirectory ?? active.directory;
+    const scriptRoot = active.directory;
     const path = await realpath(join(scriptRoot, 'scripts', name));
     const rel = relative(scriptRoot, path);
     if (rel.startsWith('..') || isAbsolute(rel)) throw new Error('Skill script cannot escape its installation');
@@ -522,7 +522,7 @@ export class DesignWorkbench {
 
       const domHints = result.stdout
         .split(/\r?\n/)
-        .filter(line => /默认做法提示|DOM|横向溢出|加载失败|控制台错误|可读性/.test(line));
+        .filter(line => /DOM|横向溢出|加载失败|控制台错误|可读性/.test(line));
 
       return {
         ok: result.ok && outputFiles.length > 0,

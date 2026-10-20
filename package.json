@@ -1,16 +1,16 @@
 {
   "name": "dsh-oil-ui",
   "version": "0.3.2",
-  "description": "Oil UI 的 DeepSeek Harness 原生插件，支持自动切换本地安装的 Oil UI Pro",
+  "description": "Oil UI 的 DeepSeek Harness 原生插件（fork：内置 oil-ui-human 版 Skill，移除上游自动更新通道与 Pro 切换）",
   "license": "MIT",
   "author": "oil-oil",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/oil-oil/dsh-oil-ui.git"
+    "url": "git+https://github.com/hongweifei/dsh-oil-ui-human.git"
   },
-  "homepage": "https://github.com/oil-oil/dsh-oil-ui#readme",
+  "homepage": "https://github.com/hongweifei/dsh-oil-ui-human#readme",
   "bugs": {
-    "url": "https://github.com/oil-oil/dsh-oil-ui/issues"
+    "url": "https://github.com/hongweifei/dsh-oil-ui-human/issues"
   },
   "keywords": [
     "deepseek-harness",
@@ -48,7 +48,7 @@
     "test": "vitest run",
     "check": "pnpm typecheck && pnpm test && pnpm build",
     "pack:plugin": "node scripts/package-plugin.mjs",
-    "sync:skill": "node scripts/vendor-oil-ui.mjs skills/oil-ui",
+    "sync:skill": "node scripts/vendor-oil-ui.mjs ../oil-ui-human",
     "vendor:skill": "node scripts/vendor-oil-ui.mjs",
     "build:skill": "node scripts/build-dsh-skill.mjs"
   },

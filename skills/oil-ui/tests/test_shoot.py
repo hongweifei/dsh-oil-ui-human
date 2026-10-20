@@ -1052,78 +1052,26 @@ h1{margin:40px;height:300px;background:#1e3a8a;animation:rise .3s ease-out both}
                     self.assertIn(expected, issues)
 
 
-    def test_lint_flags_default_patterns(self):
+    def test_lint_flags_readability_issues(self):
         self.page.write_text('''<!doctype html><html lang="zh"><head><meta charset="utf-8"><link rel="icon" href="data:,"><style>
 body{margin:0;padding:40px;font:16px/1.7 sans-serif;color:#222;background:#fff}
-.eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;margin:0}
-h1{font-size:48px;margin:0 0 24px;background:linear-gradient(90deg,#7c3aed,#06b6d4);background-clip:text;-webkit-background-clip:text;color:transparent}
-.num{font-size:12px;margin:0}h2{font-size:28px;margin:4px 0 24px}
-.card{border:1px solid #ddd;border-radius:16px;padding:24px;margin:16px 0}
-.quote{border-left:4px solid #e11d48;padding:12px 16px}.low{color:#c8c8c8}
+.low{color:#c8c8c8}
+.tinted{background:#ffd400;color:#5c5c5c;padding:12px}
 .dense{font-size:11px;line-height:1.2;width:600px}.ghost{opacity:0}
-</style></head><body><p class="eyebrow">Smart Ledger</p><h1>让记账更简单</h1>
-<p class="num">01 / 账户</p><h2>所有账户一目了然</h2>
-<div class="card">外层<div class="card">里层卡片里有一些文字</div></div>
-<div class="quote">好的工具让人忘记它的存在。</div><p class="low">很淡的说明文字，颜色几乎看不见。</p>
+</style></head><body><h1>让记账更简单</h1>
+<p class="low">很淡的说明文字，颜色几乎看不见。</p>
+<p class="tinted">亮黄底上的灰色正文，对比度达标但灰字发虚，用来验证有色底灰字提示。</p>
 <p class="dense">这是一段很长的正文，用了很小的字号和很紧的行高，一行特别长，读的时候眼睛要跑很远才能换行，这是一段很长的正文，用了很小的字号和很紧的行高，一行特别长，读的时候眼睛要跑很远才能换行。</p>
-<ul><li><span>🚀</span> 快</li><li><span>💰</span> 省</li></ul><div><span>WORKSPACE OVERVIEW</span> <span>CONTENT OBJECT</span></div>
 <p class="ghost">这一段一直停在透明状态</p>
-<p>这一页的中文足够多，用来判断这是中文界面。这一页的中文足够多，用来判断这是中文界面。这一页的中文足够多，用来判断这是中文界面。</p>
 </body></html>''', encoding="utf-8")
         output = self.folder / "lint"
         result = self.shoot(output, "--size", "1440x900")
         entry = json.loads((output / "report.json").read_text(encoding="utf-8"))[0]
         self.assertEqual(entry["issues"], [])
         rules = {item["rule"] for item in entry["lint"]}
-        for rule in ("eyebrow", "numbered", "gradientText", "sideStripe", "nestedCards", "emojiIcon",
-                     "englishLabel", "contrastLow", "smallText", "tightLeading", "longMeasure", "stuck"):
+        for rule in ("contrastLow", "grayOnColor", "smallText", "tightLeading", "longMeasure", "stuck"):
             self.assertIn(rule, rules)
-        self.assertIn("默认做法提示", result.stdout)
-
-    def test_lint_spares_reactions_but_keeps_navigation_and_feature_emoji(self):
-        self.page.write_text('''<!doctype html><meta charset="utf-8"><link rel="icon" href="data:,">
-<button aria-pressed="false"><span>😍</span><span>5</span></button>
-<button><span>🔥</span> 3</button><button role="button" aria-pressed="true"><span>😂</span></button>
-<p>用户内容 <span>🚀</span></p><blockquote><span>💰</span></blockquote>
-<div role="listbox"><button>🧡</button><button>☀️</button></div>
-<nav><button aria-pressed="true"><span>🚀</span> 启动</button><a><span>💰</span> 账户</a></nav>
-<ul><li><span>🧭</span> 方向</li><li><span>🎉</span> 成果</li></ul>''', encoding='utf-8')
-        output = self.folder / 'semantic-emoji'
-        self.shoot(output)
-        hints = json.loads((output / 'report.json').read_text(encoding='utf-8'))[0]['lint']
-        emoji = next(h for h in hints if h['rule'] == 'emojiIcon')
-        self.assertEqual(emoji['count'], 4)
-        self.assertFalse(any(symbol in ' '.join(emoji['examples']) for symbol in ('😍', '🔥', '😂', '🧡', '☀️')))
-
-    def test_lint_spares_interaction_boundaries_attachments_and_empty_slots(self):
-        self.page.write_text('''<!doctype html><link rel="icon" href="data:,"><style>
-body{margin:0}.outer{border-radius:12px;background:#eee;padding:12px;width:340px}
-.box{border:1px solid #777;border-radius:8px;padding:8px;width:260px;min-height:56px;background:white}
-.popup{position:absolute;top:0;left:420px}.fixed{position:fixed;top:90px;left:420px}
-</style><form class="outer"><textarea></textarea>
-<div class="box"><strong>draft.svg</strong><small>SVG · 1 KB</small><button>移除</button></div>
-<div class="box"><strong>draft.svg</strong><small>正在读取</small><button>重试</button></div>
-<div class="box popup">候选 <div class="box">选项</div></div>
-<div class="box fixed">候选</div></form>
-<div class="outer"><div class="box" role="listbox">候选</div><div class="box" role="menu">菜单</div>
-<div class="box" role="dialog">对话</div><div class="box" role="tooltip">说明</div>
-<div class="box" popover="manual" id="popover">弹层</div><div class="box"></div></div>
-<script>popover.showPopover()</script>''', encoding='utf-8')
-        output = self.folder / 'semantic-cards'
-        self.shoot(output, '--size', 'desktop')
-        hints = json.loads((output / 'report.json').read_text(encoding='utf-8'))[0]['lint']
-        self.assertNotIn('nestedCards', {h['rule'] for h in hints})
-
-    def test_lint_keeps_content_cards_inside_panels_and_editors(self):
-        self.page.write_text('''<!doctype html><link rel="icon" href="data:,"><style>
-.outer{border-radius:12px;background:#eee;padding:12px;width:340px}
-.box{border:1px solid #777;border-radius:8px;padding:8px;width:260px;min-height:56px}
-</style><div class="outer" style="position:relative;height:100px"><div class="box" style="position:absolute;left:12px;top:12px">真正的内容卡片</div></div>
-<form class="outer"><textarea></textarea><div class="box"><h3>另一个内容面板</h3><p>说明</p><button>操作</button></div></form>''', encoding='utf-8')
-        output = self.folder / 'real-cards'
-        self.shoot(output, '--size', 'desktop')
-        hints = json.loads((output / 'report.json').read_text(encoding='utf-8'))[0]['lint']
-        self.assertEqual(next(h for h in hints if h['rule'] == 'nestedCards')['count'], 2)
+        self.assertIn("可读性提示", result.stdout)
 
     def test_lint_requires_body_contrast_of_4_5(self):
         self.page.write_text('''<!doctype html><html><head><link rel="icon" href="data:,"><style>
@@ -1151,36 +1099,6 @@ body::before{content:"";position:absolute;left:0;top:0;width:12px;height:12px;ba
         self.assertEqual(lint["contrastLow"]["count"], 3)
         self.assertIn("smallText", lint)
         self.assertIn("tightLeading", lint)
-
-    def test_lint_spares_css_triangles_and_neutral_dividers(self):
-        self.page.write_text('''<!doctype html><html><head><link rel="icon" href="data:,"><style>
-body{margin:0;padding:40px;font:16px/1.6 sans-serif;color:#222}
-.play{width:0;height:0;border-top:12px solid transparent;border-bottom:12px solid transparent;border-left:20px solid #e11d48}
-aside{border-right:1px solid #ddd;height:200px;width:200px}
-blockquote{border-left:4px solid #e11d48;padding:8px 16px;margin:16px 0}
-nav a{display:block;position:relative;padding:8px 16px;width:120px}
-nav a[aria-current="page"]{border-left:3px solid #2563eb}
-nav a.active::before{content:"";position:absolute;left:0;top:4px;width:3px;height:32px;background:#2563eb}
-@keyframes rise{from{opacity:0}to{opacity:1}}h1{animation:rise .6s ease-out both;font-size:40px;margin:48px 0 12px}
-</style></head><body><span class="play"></span><aside>Sidebar</aside><blockquote>Quoted passage with semantic blockquote border.</blockquote>
-<nav><a href="#a" aria-current="page">Overview</a><a href="#b" class="active">Settings</a><a href="#c">Billing</a></nav>
-<p>Intro paragraph above the heading.</p>
-<h1>Plain heading</h1><p>Body text that follows the heading closely.</p></body></html>''', encoding="utf-8")
-        output = self.folder / "clean"
-        self.shoot(output, "--size", "1280x800")
-        self.assertEqual(json.loads((output / "report.json").read_text(encoding="utf-8"))[0]["lint"], [])
-
-        self.page.write_text('''<!doctype html><html><head><link rel="icon" href="data:,"><style>
-body{margin:0;padding:40px;font:16px/1.6 sans-serif;color:#222}
-nav a{display:block;position:relative;padding:8px 16px;width:120px}
-nav a.plain-border{border-left:4px solid #e11d48}
-nav a.plain-pseudo::before{content:"";position:absolute;left:0;top:4px;width:4px;height:32px;background:#e11d48}
-</style></head><body><nav><a href="#a" class="plain-border">Unselected A</a><a href="#b" class="plain-pseudo">Unselected B</a></nav></body></html>''', encoding="utf-8")
-        flagged = self.folder / "nav-unselected"
-        self.shoot(flagged, "--size", "1280x800")
-        lint = {item["rule"]: item for item in json.loads((flagged / "report.json").read_text(encoding="utf-8"))[0]["lint"]}
-        self.assertIn("sideStripe", lint)
-        self.assertEqual(lint["sideStripe"]["count"], 2)
 
     def test_compare_against_reference(self):
         reference = self.folder / "reference"

@@ -12,12 +12,12 @@ export { Config };
 export const name = 'dsh-oil-ui';
 
 export const MAIN_AGENT_SYSTEM_PROMPT =
-  'For UI tasks, call oil_ui_skill_status first to refresh discovery and read activeSkillName (local oil-ui-pro installs unlock without restarting), then load that Skill using the skill tool. Read and write project files directly in the current working directory. Use oil_ui_explorer for style-explorer.html comparison pages, oil_ui_shoot for screenshots/interactions/responsive checks/recordings, oil_ui_media for public-domain and museum media search/preview/fetch, and oil_ui_image for generating or editing visual assets.';
+  'For UI tasks, call oil_ui_skill_status first to refresh discovery and confirm the Skill directory and image-generation availability, then load the "oil-ui" Skill using the skill tool. Read and write project files directly in the current working directory. Use oil_ui_explorer for style-explorer.html comparison pages, oil_ui_shoot for screenshots/interactions/responsive checks/recordings, oil_ui_media for public-domain and museum media search/preview/fetch, and oil_ui_image for generating or editing visual assets.';
 
 export function buildSubagentSystemPrompt(reviewerManual: string, referencesPath?: string): string {
   return [
     '当主 Agent 委派你执行界面视觉或交互评审（UI/UX Review）时，请直接按下方已内置的《视觉与交互评审手册》（`references/reviewer-manual.md`）执行，无需调用 `read_file`、`skill` 或 `oil_ui_skill_status` 重复读取该手册，评审过程中只提供客观评审意见、不修改项目文件。查看截图请用 `read_image`；需要补充 480px/180px 缩略图、遮字图（`mask: true`）或实际操作验证时请用 `oil_ui_shoot`。（若主 Agent 委派的是非评审类的常规子任务，则直接按主 Agent 的任务指令执行。）',
-    ...(referencesPath ? [`当前生效 Skill 的 references/ 绝对路径：${referencesPath}。Pro 评审按需读取 ${referencesPath}/review-modes.md 与 ${referencesPath}/play-craft.md。`] : []),
+    ...(referencesPath ? [`当前生效 Skill 的 references/ 绝对路径：${referencesPath}。需要补充阅读分册时按该路径读取。`] : []),
     '',
     reviewerManual.trim(),
   ].join('\n');
@@ -120,14 +120,12 @@ export function apply(ctx: Context, config: Config) {
   let invalidateSkills: (() => void) | undefined;
   let provider: ReturnType<typeof createSkillProvider> | undefined;
   let skillsRegistry: Context['skills'] | undefined;
-  const reportStatus = async (skillsCtx: Context, scope: Agent | undefined, update: boolean) => {
+  const reportStatus = async (skillsCtx: Context, scope: Agent | undefined) => {
     const cwd = scope?.session.header.cwd;
     const discovered = provider ? await provider.refresh(cwd) : { snapshot: await discoverSkill({ ...config, cwd }), changed: false };
     if (discovered.changed) invalidateSkills?.();
     const visible = await skillsCtx.skills.get(discovered.snapshot.active.name, { scope, cwd });
-    const status = await skillStatus(visible, { ...config, cwd, update }, discovered.snapshot);
-    if (update) invalidateSkills?.();
-    return status;
+    return skillStatus(visible, { ...config, cwd }, discovered.snapshot);
   };
 
   ctx.inject(['tools', 'skills'], ctx => {
@@ -135,20 +133,18 @@ export function apply(ctx: Context, config: Config) {
     ctx.tools.register(
       defineTool({
         name: 'oil_ui_skill_status',
-        isConcurrencySafe: args => !Boolean(args && typeof args === 'object' && (args as { update?: unknown }).update),
+        isConcurrencySafe: () => true,
         description:
-          '查看当前生效的 Oil UI 版本（oil-ui 或本地安装的 oil-ui-pro）、更新状态、升级提示、本地生图可用性与子 Agent 评审手册注入状态。仅在用户明确要求更新时传入 update=true。',
-        parameters: {
-          update: { type: 'boolean', description: '仅在用户明确要求时检查并更新 Skill。' },
-        },
-        presentCall: (args): GenericCallView => ({
+          '查看当前生效的 Oil UI Skill（内置开源版 oil-ui，或配置 skillDir 指定的本地安装）、其目录与版本、本地生图可用性与子 Agent 评审手册注入状态。',
+        parameters: {},
+        presentCall: (): GenericCallView => ({
           card: 'generic',
-          title: args.update ? '更新 Oil UI Skill' : '查看 Oil UI Skill 状态',
+          title: '查看 Oil UI Skill 状态',
           kind: 'read',
         }),
         output: nativeOutput,
-        execute: async (args, exec) => {
-          return json(await reportStatus(ctx, exec.agent, Boolean(args?.update)));
+        execute: async (_args, exec) => {
+          return json(await reportStatus(ctx, exec.agent));
         },
       }),
     );
@@ -197,7 +193,7 @@ export function apply(ctx: Context, config: Config) {
           query: { type: 'string', description: '附加到页面地址的额外查询参数（如 theme=dark&lang=zh）。' },
           zoom: { oneOf: [{ type: 'number' }, { type: 'string' }, { type: 'array', items: { oneOf: [{ type: 'number' }, { type: 'string' }] } }], description: '截图像素倍数，可传数值、逗号分隔字符串或倍数数组。' },
           fullPage: { type: 'boolean', description: '是否截取整个页面。' },
-          thumb: { type: 'boolean', description: '快速缩略图：按 0.5 倍分辨率截视口，缩短等待并跳过默认做法检查。' },
+          thumb: { type: 'boolean', description: '快速缩略图：按 0.5 倍分辨率截视口，缩短等待并跳过可读性检查。' },
           mask: { type: 'boolean', description: '是否生成遮字图。' },
           sheet: { type: 'boolean', description: '是否生成联系表。' },
           noSheet: { type: 'boolean', description: '多目标批量截图时不自动生成 sheet.png。' },
@@ -327,29 +323,22 @@ export function apply(ctx: Context, config: Config) {
     ctx.effect(() => {
       const disposeStatus = ctx.commands.register({
         name: 'oil-ui-status',
-        description: '查看当前生效版本（oil-ui / oil-ui-pro）、更新状态与生图可用性（传入 update 可直接更新）',
-        input: {
-          hint: '[update]',
-        },
+        description: '查看当前生效的 oil-ui Skill 目录、版本与生图可用性',
         handler: async invocation => {
-          const arg = invocation.rawInput.trim().toLowerCase();
-          if (arg.length > 0 && arg !== 'update') {
+          if (invocation.rawInput.trim().length > 0) {
             return {
               kind: 'error',
-              text: '用法：/oil-ui-status [update]',
+              text: '用法：/oil-ui-status',
             };
           }
-          const status = await reportStatus(ctx, invocation.agent, arg === 'update');
+          const status = await reportStatus(ctx, invocation.agent);
           const lines = [
-            `当前生效 Skill：${status.activeSkillName}（${status.edition === 'pro' ? 'Pro' : 'Lite'}）v${status.activeVersion}`,
+            `当前生效 Skill：${status.name} v${status.activeVersion}（${status.activeResourceBase}）`,
             ...(status.visibleMatchesOriginal === false && status.detected
               ? [`注意：检测到本地 ${status.detected.name}（${status.detected.path}），但当前作用域被 ${status.effective?.provider ?? '外部同名 Skill'} 覆盖`]
               : []),
-            `最新版本：${status.latestVersion ?? status.activeVersion}${status.updateAvailable ? '（有新版本可用，可运行 /oil-ui-status update 更新）' : ''}`,
-            `本地 Pro：${status.proInstalled ? `已检测到（${status.proSourcePath}）` : '未安装'}`,
+            `内置 Skill 版本：v${status.bundledVersion}（打包清单 ${status.fileCount} 个文件）`,
             `本地生图（image-gen）：${status.imageGenAvailable ? `可用（${status.imageGenScriptPath}）` : '未检测到'}`,
-            ...(status.updateNotice ? [status.updateNotice] : []),
-            ...(status.recommendOnceNotice ? [status.recommendOnceNotice] : []),
           ];
           return {
             kind: 'success',
@@ -450,7 +439,7 @@ export function apply(ctx: Context, config: Config) {
           ? { ...snapshot.active, directory: effective.resourceBase.path } : await resolveActiveSkill(options, snapshot);
         referencesPath = join(active.directory, 'references');
       } catch { /* Discovery failure still allows the bundled review manual. */
-        active = { edition: 'lite' as const, name: 'oil-ui' as const, directory: bundledSkillDirectory, source: 'bundled-lite' as const };
+        active = { name: 'oil-ui' as const, directory: bundledSkillDirectory, source: 'bundled' as const };
       }
       const manual = await loadReviewerManual(options, active);
       if (!manual || disposed) return;

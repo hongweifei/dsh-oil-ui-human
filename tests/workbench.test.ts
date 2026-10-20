@@ -22,7 +22,7 @@ async function setup() {
   roots.push(root);
   const cwd = join(root, 'workspace');
   await mkdir(cwd, { recursive: true });
-  const w = new DesignWorkbench(0, { preferPro: false });
+  const w = new DesignWorkbench(0);
   instances.push(w);
   return { w, cwd, root };
 }
@@ -31,7 +31,7 @@ beforeEach(async () => {
   localHome.path = await realpath(await mkdtemp(join(tmpdir(), 'oil-workbench-home-')));
   roots.push(localHome.path);
   vi.stubEnv('DSH_HOME', join(localHome.path, '.dsh'));
-  vi.stubEnv('OIL_UI_PRO_DIR', '');
+  vi.stubEnv('OIL_UI_SKILL_DIR', '');
   vi.stubEnv('OIL_UI_IMAGE_GEN_SCRIPT', '');
 });
 
@@ -44,7 +44,6 @@ afterEach(async () => {
 });
 
 function explorerData(html: string): {
-  edition: string;
   fingerprint: string;
   candidates: { content: string; kind: string; id: string }[];
 } {
@@ -56,15 +55,15 @@ function explorerData(html: string): {
 async function scriptedWorkbench(script: string, mediaScript?: string) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'oil-native-')));
   roots.push(root);
-  const skill = join(root, 'pro');
+  const skill = join(root, 'local');
   const cwd = join(root, 'workspace');
   await mkdir(join(skill, 'scripts'), { recursive: true });
   await mkdir(cwd, { recursive: true });
-  await writeFile(join(skill, 'SKILL.md'), '---\nname: oil-ui-pro\ndescription: Test local tools\n---\nInstructions');
+  await writeFile(join(skill, 'SKILL.md'), '---\nname: oil-ui\ndescription: Test local tools\n---\nInstructions');
   await writeFile(join(skill, 'scripts/shoot.mjs'), script);
   await writeFile(join(skill, 'scripts/curate-media.mjs'), mediaScript ?? script);
   await writeFile(join(cwd, 'index.html'), '<title>Native page</title>');
-  const w = new DesignWorkbench(0, { proSkillDir: skill });
+  const w = new DesignWorkbench(0, { skillDir: skill });
   instances.push(w);
   return { w, cwd, root, skill };
 }
@@ -134,7 +133,6 @@ describe('native explorer and managed scripts in cwd', () => {
     expect(html).toContain('data:image/png;base64,');
     expect(html).not.toContain('/*__OIL_UI_DATA__*/ null');
     const data = explorerData(html);
-    expect(data.edition).toBe('open');
     expect(data.fingerprint).toMatch(/^[a-f0-9]{24}$/);
     expect(data.candidates).toHaveLength(3);
     expect(data.candidates[0]?.content).toContain('a: inline candidate');
@@ -209,19 +207,18 @@ describe('native explorer and managed scripts in cwd', () => {
     await expect(w.explorer(cwd, { manifest: { ...manifest, candidates: [c] } })).rejects.toThrow('within the project');
   });
 
-  it('uses local Pro templates and reports Pro edition', async () => {
+  it('uses explorer templates from the configured Skill directory', async () => {
     const { w, cwd, skill } = await scriptedWorkbench('');
     await mkdir(join(skill, 'assets'), { recursive: true });
     await writeFile(
       join(skill, 'assets/style-explorer.html'),
-      '<html><head><meta content="connect-src \'none\'"></head><body>PRO TEMPLATE<script>const DATA = /*__OIL_UI_DATA__*/ null;\n</script></body></html>',
+      '<html><head><meta content="connect-src \'none\'"></head><body>SKILLDIR TEMPLATE<script>const DATA = /*__OIL_UI_DATA__*/ null;\n</script></body></html>',
     );
     await mkdir(join(cwd, 'explore'), { recursive: true });
     for (const id of ['a', 'b', 'c']) await writeFile(join(cwd, `explore/${id}.html`), `<title>${id}</title>`);
     await w.explorer(cwd, {});
     const html = await readFile(join(cwd, 'style-explorer.html'), 'utf8');
-    expect(html).toContain('PRO TEMPLATE');
-    expect(explorerData(html).edition).toBe('pro');
+    expect(html).toContain('SKILLDIR TEMPLATE');
   });
 
   it('validates script parameters and workspace boundaries before execution', async () => {
@@ -249,7 +246,7 @@ describe('native explorer and managed scripts in cwd', () => {
 
   it('serves subdirectory targets from workspace root, forwards full shoot flags to a directory for multi-output captures', async () => {
     const { w, cwd } = await scriptedWorkbench(
-      `import{writeFile,mkdir}from'node:fs/promises';import{join}from'node:path';const args=process.argv.slice(2),dir=args[args.indexOf('--out')+1];await mkdir(dir,{recursive:true});await writeFile(join(dir,'idle.png'),'image bytes');console.log(JSON.stringify(args));console.log('idle.png 默认做法提示（不是报错，按设计意图判断）：small text');`,
+      `import{writeFile,mkdir}from'node:fs/promises';import{join}from'node:path';const args=process.argv.slice(2),dir=args[args.indexOf('--out')+1];await mkdir(dir,{recursive:true});await writeFile(join(dir,'idle.png'),'image bytes');console.log(JSON.stringify(args));console.log('idle.png 可读性提示（不是报错，按设计意图判断）：small text');`,
     );
     await mkdir(join(cwd, 'explore'), { recursive: true });
     await writeFile(join(cwd, 'explore/a.html'), '<title>Candidate A</title>');
@@ -275,7 +272,7 @@ describe('native explorer and managed scripts in cwd', () => {
     const shotsEntries = await readdir(join(cwd, 'shots'));
     expect(shotsEntries).toEqual(['idle.png']);
 
-    expect(result.domHints[0]).toContain('默认做法提示');
+    expect(result.domHints[0]).toContain('可读性提示');
     const args = JSON.parse(result.stdout.split('\n')[0]!);
     expect(args[0]).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/explore\/a\.html$/);
     expect(args).toContain('--size');
@@ -357,7 +354,7 @@ it('honors Harness cancellation and reports malformed media output as structured
   expect(media.errors).toEqual(expect.arrayContaining([expect.objectContaining({ message: 'Media script returned invalid JSON' })]));
 });
 
-it('hot-switches explorer templates and scripts on one workbench after Pro is installed', async () => {
+it('hot-switches explorer templates and scripts on one workbench when the configured Skill directory changes', async () => {
   const cwd = await realpath(await mkdtemp(join(tmpdir(), 'oil-hot-cwd-')));
   roots.push(cwd);
   const w = new DesignWorkbench(0);
@@ -366,29 +363,31 @@ it('hot-switches explorer templates and scripts on one workbench after Pro is in
   await writeFile(join(cwd, 'index.html'), '<title>Home</title>');
   for (const id of ['a', 'b', 'c']) await writeFile(join(cwd, `explore/${id}.html`), `<title>${id}</title>`);
   await w.explorer(cwd, {});
-  expect(explorerData(await readFile(join(cwd, 'style-explorer.html'), 'utf8')).edition).toBe('open');
+  expect(await readFile(join(cwd, 'style-explorer.html'), 'utf8')).not.toContain('HOT LOCAL');
 
-  const pro = join(localHome.path, '.dsh/skills/oil-ui-pro');
-  await mkdir(join(pro, 'assets'), { recursive: true });
-  await mkdir(join(pro, 'scripts'), { recursive: true });
-  await writeFile(join(pro, 'SKILL.md'), '---\nname: oil-ui-pro\ndescription: Hot Pro\n---\nPro instructions');
+  const local = join(localHome.path, '.dsh/skills/oil-ui');
+  await mkdir(join(local, 'assets'), { recursive: true });
+  await mkdir(join(local, 'scripts'), { recursive: true });
+  await writeFile(join(local, 'SKILL.md'), '---\nname: oil-ui\ndescription: Hot local Skill\n---\nLocal instructions');
   await writeFile(
-    join(pro, 'assets/style-explorer.html'),
-    '<meta content="connect-src \'none\'"><main>HOT PRO</main><script>const DATA = /*__OIL_UI_DATA__*/ null;\n</script>',
+    join(local, 'assets/style-explorer.html'),
+    '<meta content="connect-src \'none\'"><main>HOT LOCAL</main><script>const DATA = /*__OIL_UI_DATA__*/ null;\n</script>',
   );
   await writeFile(
-    join(pro, 'scripts/shoot.mjs'),
-    `import{writeFile}from'node:fs/promises';import{join}from'node:path';const args=process.argv.slice(2);await writeFile(join(args[args.indexOf('--out')+1],'pro.png'),'pro image');console.log('Hot Pro script');`,
+    join(local, 'scripts/shoot.mjs'),
+    `import{writeFile}from'node:fs/promises';import{join}from'node:path';const args=process.argv.slice(2);await writeFile(join(args[args.indexOf('--out')+1],'local.png'),'local image');console.log('Hot local script');`,
   );
+  vi.stubEnv('OIL_UI_SKILL_DIR', local);
   await w.explorer(cwd, {});
   const html = await readFile(join(cwd, 'style-explorer.html'), 'utf8');
-  expect(html).toContain('HOT PRO');
-  expect(explorerData(html).edition).toBe('pro');
-  expect(await w.shoot(cwd, {})).toMatchObject({ ok: true, stdout: 'Hot Pro script\n' });
+  expect(html).toContain('HOT LOCAL');
+  expect(explorerData(html).fingerprint).toMatch(/^[a-f0-9]{24}$/);
+  expect(await w.shoot(cwd, {})).toMatchObject({ ok: true, stdout: 'Hot local script\n' });
 
-  await rm(pro, { recursive: true });
+  await rm(local, { recursive: true });
+  vi.unstubAllEnvs();
   await w.explorer(cwd, {});
-  expect(explorerData(await readFile(join(cwd, 'style-explorer.html'), 'utf8')).edition).toBe('open');
+  expect(await readFile(join(cwd, 'style-explorer.html'), 'utf8')).not.toContain('HOT LOCAL');
 });
 
 const IMAGE_MOCK = `const fs=require('node:fs');const a=process.argv.slice(2);const value=k=>a[a.indexOf(k)+1];const promptFile=value('--prompt-file'),out=value('--out');const prompt=fs.readFileSync(promptFile,'utf8');fs.writeFileSync(out,'image fixture');console.log(JSON.stringify({outputs:[out],model:a.includes('--model')?value('--model'):'mock-image-model',promptFile,prompt,mode:a[0],args:a}));`;
@@ -412,7 +411,7 @@ async function imageWorkbench(body = IMAGE_MOCK) {
     if (executable === 'python3') return runCommand.call(this, process.execPath, args, execCwd, timeoutMs, signal);
     return runCommand.call(this, executable, args, execCwd, timeoutMs, signal);
   });
-  const w = new DesignWorkbench(0, { preferPro: false, imageGenScript: script });
+  const w = new DesignWorkbench(0, { imageGenScript: script });
   instances.push(w);
   return { w, cwd };
 }

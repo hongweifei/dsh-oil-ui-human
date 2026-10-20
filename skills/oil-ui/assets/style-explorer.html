@@ -13,7 +13,7 @@
 .bar{position:sticky;top:0;z-index:10;min-height:68px;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:14px;padding:14px 24px;background:var(--canvas);border-bottom:1px solid var(--line);view-transition-name:bar}
 .bar-l{display:flex;align-items:center;gap:12px;min-width:0}
 .brand{display:flex;align-items:center;gap:10px;flex:none;color:var(--ink);text-decoration:none}.brand img{width:30px;height:30px;display:block;transition:transform .5s var(--snap)}.brand:hover img{transform:rotate(-10deg) scale(1.06)}.brand:focus-visible{outline:2px solid var(--accent);outline-offset:4px;border-radius:6px}
-.wm{font-family:var(--brand);font-size:36px;line-height:1;font-weight:400;letter-spacing:-.025em;white-space:nowrap}.pro-badge{align-self:center;margin-left:-2px;padding:4px 6px;border-radius:3px;background:var(--chip);color:var(--accent);font-family:var(--sans);font-size:10px;font-weight:600;line-height:1;letter-spacing:.08em}
+.wm{font-family:var(--brand);font-size:36px;line-height:1;font-weight:400;letter-spacing:-.025em;white-space:nowrap}
 .sep{width:1px;height:18px;background:var(--line-2);flex:none}.proj{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bar-c{display:flex;gap:8px;flex-wrap:wrap;min-width:0}
 .seg{position:relative;display:flex;padding:2px;border-radius:4px;background:var(--well)}
@@ -100,7 +100,7 @@ html[data-vt=reshape]::view-transition-new(*):only-child{animation:vt-in .3s .08
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:0s!important;animation-duration:0s!important;animation-delay:0s!important}.frame:hover{transform:none}}
 </style></head><body>
 <header class="bar" id="bar" hidden>
- <div class="bar-l"><a class="brand" href="https://www.oiloil.org" target="_blank" rel="noopener" data-i18n-title="brandTitle" data-i18n-aria-label="brandLabel"><img src="logo.png" alt=""><span class="wm">Oil UI</span><span id="pro-badge" class="pro-badge">PRO</span></a><span class="sep" aria-hidden="true"></span><span class="proj" id="project"></span></div>
+ <div class="bar-l"><a class="brand" href="https://www.oiloil.org" target="_blank" rel="noopener" data-i18n-title="brandTitle" data-i18n-aria-label="brandLabel"><img src="logo.png" alt=""><span class="wm">Oil UI</span></a><span class="sep" aria-hidden="true"></span><span class="proj" id="project"></span></div>
  <div class="bar-c">
   <div class="seg" role="group" data-i18n-aria-label="layoutLabel"><span class="thumb" aria-hidden="true"></span><button type="button" data-layout="compare" aria-pressed="true" data-i18n="compare"></button><button type="button" data-layout="loupe" aria-pressed="false" data-i18n="loupe"></button></div>
   <div class="seg" role="group" data-i18n-aria-label="viewportLabel"><span class="thumb" aria-hidden="true"></span><button type="button" data-viewport="desktop" aria-pressed="true" data-i18n="desktop"></button><button type="button" data-viewport="mobile" aria-pressed="false" data-i18n="mobile"></button></div>
@@ -127,9 +127,9 @@ const I18N = {
   "zh": {
     "htmlLang": "zh-CN",
     "pageTitle": "风格对比",
-    "projectTitle": "{project} · 风格对比 · Oil UI{edition}",
-    "brandTitle": "Oil UI{edition} · oiloil.org",
-    "brandLabel": "Oil UI{edition}，打开 oiloil.org",
+    "projectTitle": "{project} · 风格对比 · Oil UI",
+    "brandTitle": "Oil UI · oiloil.org",
+    "brandLabel": "Oil UI，打开 oiloil.org",
     "layoutLabel": "查看方式",
     "compare": "并排",
     "loupe": "单张",
@@ -171,9 +171,9 @@ const I18N = {
   "en": {
     "htmlLang": "en",
     "pageTitle": "Style comparison",
-    "projectTitle": "{project} · Style comparison · Oil UI{edition}",
-    "brandTitle": "Oil UI{edition} · oiloil.org",
-    "brandLabel": "Oil UI{edition} — visit oiloil.org",
+    "projectTitle": "{project} · Style comparison · Oil UI",
+    "brandTitle": "Oil UI · oiloil.org",
+    "brandLabel": "Oil UI — visit oiloil.org",
     "layoutLabel": "View mode",
     "compare": "Compare",
     "loupe": "Single",
@@ -213,10 +213,8 @@ const I18N = {
     "copyFailed": "Couldn't copy. Please copy the text manually."
   }
 };
-const IS_PRO = DATA?.edition !== 'open';
 const LANG = DATA?.lang || (/^zh/i.test(navigator.language || '') ? 'zh' : 'en');
 function t(key, values={}) {
- values={edition:IS_PRO?' Pro':'',...values};
  return I18N[LANG][key].replace(/\{(\w+)\}/g, (_, name)=>String(values[name] ?? ''));
 }
 (()=>{
@@ -225,7 +223,6 @@ function t(key, values={}) {
  document.title=DATA?.project?t('projectTitle',{project:DATA.project}):t('pageTitle');
  $$('[data-i18n]').forEach(n=>n.textContent=t(n.dataset.i18n));
  ['aria-label','title','placeholder'].forEach(attr=>$$(`[data-i18n-${attr}]`).forEach(n=>n.setAttribute(attr,t(n.getAttribute(`data-i18n-${attr}`)))));
- $('#pro-badge').hidden=!IS_PRO;
  if(!DATA?.candidates?.length){$('#empty').hidden=false;return;}
  const C=DATA.candidates,SIZES={desktop:{w:1280,h:900},mobile:{w:390,h:844}},KEY=`oil-ui:${DATA.fingerprint||DATA.project}`;
  const byId=Object.fromEntries(C.map(c=>[c.id,c])),DIRS=C.filter(c=>!c.baseline),no=c=>c.baseline?t('baseline'):String(DIRS.indexOf(c)+1).padStart(2,'0'),vtName=c=>`stage-${C.indexOf(c)}`;

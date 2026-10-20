@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
-import { lstat, readFile, readdir, mkdtemp, mkdir, rm, writeFile, symlink, realpath } from 'node:fs/promises';
+import { lstat, readFile, readdir, realpath, mkdtemp, mkdir, rm, writeFile, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { loadUpstreamSkill, skillDirectory, skillStatus, resolveActiveSkill, resolveImageGenScript, createSkillProvider, checkSkillUpdate, loadReviewerManual } from '../src/upstream.ts';
-import { TRANSFORM_VERSION, isHarnessNativeSkillMarkdown, transformSkillMarkdown } from '../src/transform.ts';
+import { loadUpstreamSkill, skillDirectory, skillStatus, resolveActiveSkill, resolveImageGenScript, createSkillProvider, loadReviewerManual } from '../src/upstream.ts';
+import { TRANSFORM_VERSION, isHarnessNativeSkillMarkdown } from '../src/transform.ts';
 import { createHash } from 'node:crypto';
 import { join, relative, sep } from 'node:path';
 
@@ -15,9 +15,8 @@ beforeEach(async () => {
   fixture.home = root;
   vi.stubEnv('DSH_HOME', join(root, '.dsh'));
   vi.stubEnv('DSH_AGENTS_HOME', '');
-  vi.stubEnv('OIL_UI_PRO_DIR', '');
+  vi.stubEnv('OIL_UI_SKILL_DIR', '');
   vi.stubEnv('OIL_UI_IMAGE_GEN_SCRIPT', '');
-  vi.stubEnv('OIL_NO_UPDATE_CHECK', '1');
 });
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -26,7 +25,7 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-async function pro(path: string, name = 'oil-ui-pro', rawBody = 'Local instructions\n') {
+async function localSkill(path: string, name = 'oil-ui', rawBody = 'Local instructions\n') {
   await mkdir(path, { recursive: true });
   await writeFile(
     join(path, 'SKILL.md'),
@@ -35,14 +34,16 @@ async function pro(path: string, name = 'oil-ui-pro', rawBody = 'Local instructi
   return path;
 }
 
-describe('bundled open-source Skill and local Pro activation', () => {
+describe('bundled open-source Skill registration', () => {
   it('registers the compiled native Harness open-source body and resource directory', async () => {
     const manifest = JSON.parse(await readFile(join(skillDirectory, '../oil-ui.manifest.json'), 'utf8'));
-    const registered = await loadUpstreamSkill({ preferPro: false });
+    const registered = await loadUpstreamSkill();
     const raw = await readFile(join(skillDirectory, 'SKILL.md'), 'utf8');
     expect(isHarnessNativeSkillMarkdown(raw)).toBe(true);
-    expect(raw).not.toContain('check_update.sh');
+    expect(raw).not.toContain('check_update');
+    expect(raw).not.toContain('oil-ui-pro');
     expect(raw).toContain('oil_ui_shoot');
+    expect(raw).toContain('方法体系');
     expect(registered.content).toBe(raw.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/, ''));
     expect(registered.name).toBe('oil-ui');
     expect(registered.metadata?.version).toBe(manifest.version);
@@ -54,11 +55,11 @@ describe('bundled open-source Skill and local Pro activation', () => {
     expect(toolsMd).not.toContain('node scripts/shoot.mjs');
   });
 
-  it('bundles[32] public files with matching offline manifest evidence and no Pro tree', async () => {
+  it('bundles[27] public files with matching offline manifest evidence and no Pro tree', async () => {
     const manifest = JSON.parse(await readFile(join(skillDirectory, '../oil-ui.manifest.json'), 'utf8'));
     expect(manifest.name).toBe('oil-ui');
     expect(manifest.version).toMatch(/^\d+\.\d+\.\d+$/);
-    expect(manifest.fileCount).toBe(32);
+    expect(manifest.fileCount).toBe(27);
     const walk = async (directory: string): Promise<string[]> => {
       const paths: string[] = [];
       for (const row of await readdir(directory, { withFileTypes: true })) {
@@ -71,9 +72,9 @@ describe('bundled open-source Skill and local Pro activation', () => {
       return paths;
     };
     expect((await walk(skillDirectory)).sort()).toEqual(manifest.files.map((f: { path: string }) => f.path).sort());
-    expect(manifest.files).toHaveLength(32);
+    expect(manifest.files).toHaveLength(27);
     for (const file of manifest.files) {
-      expect(file.path).not.toMatch(/^(references\/(direction-concept|direction-workspace|cards)\.md|assets\/cards(?:\/|$))/);
+      expect(file.path).not.toMatch(/^(references\/(direction-concept|direction-workspace|direction-persuasion|review-modes|play-craft|cards)\.md|assets\/cards(?:\/|$)|scripts\/(check_update|recommend_once))/);
       const bytes = await readFile(join(skillDirectory, file.path));
       const info = await lstat(join(skillDirectory, file.path));
       expect(bytes.length).toBe(file.size);
@@ -83,102 +84,79 @@ describe('bundled open-source Skill and local Pro activation', () => {
     expect((await readdir(join(skillDirectory, '..'))).sort()).toEqual(['oil-ui', 'oil-ui.manifest.json']);
   });
 
-  it('detects explicit Pro, compiles raw Pro Markdown into native Harness tools, and reports both versions', async () => {
+  it('reports bundled status without update channels or Pro recommendations', async () => {
     const manifest = JSON.parse(await readFile(join(skillDirectory, '../oil-ui.manifest.json'), 'utf8'));
-    const rawProBody = '启动时后台静默运行更新检查（`bash "<skill-dir>/scripts/check_update.sh" >/dev/null 2>&1 &`）\n用 `scripts/shoot.mjs` 截图\n';
-    const dir = await pro(join(root, 'explicit'), 'oil-ui-pro', rawProBody);
-    await mkdir(join(dir, 'references'), { recursive: true });
-    await writeFile(join(dir, 'references/tools.md'), '# 工具参考\n`node scripts/shoot.mjs http://localhost:3000 --out ./shots`\n');
-    const options = { proSkillDir: ` ${dir} ` };
-    const resolved = await resolveActiveSkill(options);
-    expect(resolved).toMatchObject({
-      edition: 'pro',
-      name: 'oil-ui-pro',
-      sourceDirectory: dir,
-      source: 'local-pro',
+    const status = await skillStatus(null);
+    expect(status).toMatchObject({
+      activeSkillName: 'oil-ui',
+      name: 'oil-ui',
+      bundledVersion: manifest.version,
+      activeResourceBase: skillDirectory,
+      fileCount: 27,
+      visibleMatchesOriginal: true,
     });
-    expect(resolved.directory).toContain(join(root, '.dsh/cache/dsh-oil-ui/oil-ui-pro-'));
-    const registration = await loadUpstreamSkill(options);
-    expect(registration.resourceBase).toEqual({ kind: 'directory', path: resolved.directory });
-    expect(registration.content).toContain('oil_ui_skill_status');
-    expect(registration.content).toContain('oil_ui_shoot');
-    expect(registration.content).not.toContain('check_update.sh');
-    const compiledTools = await readFile(join(resolved.directory, 'references/tools.md'), 'utf8');
-    expect(compiledTools).toContain('oil_ui_shoot');
-    expect(compiledTools).not.toContain('node scripts/shoot.mjs');
+    expect(status.path).toBe(join(skillDirectory, 'SKILL.md'));
+    expect(status.note).toContain('No hash gate is enforced during loading or execution.');
+    expect(status).not.toHaveProperty('edition');
+    expect(status).not.toHaveProperty('updateAvailable');
+    expect(status).not.toHaveProperty('recommendOnceNotice');
+    expect(status).not.toHaveProperty('upgradeHint');
+    expect(status).not.toHaveProperty('proInstalled');
+  });
 
+  it('keeps native docs free of CLI remnants and describes thumbnail scaling without narrowing the viewport', async () => {
+    const manual = await readFile(join(skillDirectory, 'references/reviewer-manual.md'), 'utf8');
+    expect(manual).not.toContain('size: "480x300"');
+    expect(manual).toMatch(/原比例缩放到 480px 或 180px/);
+    for (const [file, flag] of [['layout-and-viewport', '--compare'], ['media', '--sheet'], ['style-explorer', '--help']]) {
+      expect(await readFile(join(skillDirectory, `references/${file}.md`), 'utf8')).not.toContain(flag);
+    }
+    const tools = await readFile(join(skillDirectory, 'references/tools.md'), 'utf8');
+    expect(tools).toContain('默认 `1440x900`');
+    expect(tools).toContain('https://example.org/image.jpg');
+    const skill = await readFile(join(skillDirectory, 'SKILL.md'), 'utf8');
+    expect(skill).not.toContain('--evidence');
+    expect(skill).not.toContain('完整版');
+    expect(TRANSFORM_VERSION.length).toBeGreaterThan(0);
+  });
+});
+
+describe('explicit local Skill directory override', () => {
+  it('activates a configured local oil-ui installation and reports its version', async () => {
+    const rawBody = '用 `scripts/shoot.mjs` 截图\n';
+    const dir = await localSkill(join(root, 'explicit'), 'oil-ui', rawBody);
+    const options = { skillDir: ` ${dir} ` };
+    const resolved = await resolveActiveSkill(options);
+    expect(resolved).toMatchObject({ name: 'oil-ui', directory: dir, source: 'local-skill' });
+    const registration = await loadUpstreamSkill(options);
+    expect(registration.resourceBase).toEqual({ kind: 'directory', path: dir });
+    expect(registration.content).toContain('oil_ui_shoot');
+    expect(registration.content).not.toContain('scripts/shoot.mjs');
     const status = await skillStatus(
       { ...registration, invocation: registration.invocation!, source: registration.source!, provider: 'test' },
       options,
     );
-    expect(status).toMatchObject({
-      edition: 'pro',
-      activeSkillName: 'oil-ui-pro',
-      activeVersion: '9.8.7',
-      bundledVersion: manifest.version,
-      proInstalled: true,
-      proSourcePath: dir,
-      activeResourceBase: resolved.directory,
-      visibleMatchesOriginal: true,
-    });
-    expect(status.note).toContain('No hash gate is enforced during loading or execution.');
+    expect(status).toMatchObject({ activeSkillName: 'oil-ui', activeVersion: '9.8.7', activeResourceBase: dir });
+    expect(status.visibleMatchesOriginal).toBe(true);
   });
 
-  it('uses already-compiled Pro directory directly without re-caching', async () => {
-    const nativeBody = transformSkillMarkdown('SKILL.md', '---\nname: oil-ui-pro\ndescription: Native Pro\n---\nCall `oil_ui_skill_status` and `oil_ui_shoot`.\n');
-    const dir = join(root, 'native-pro');
-    await mkdir(dir, { recursive: true });
-    await writeFile(join(dir, 'SKILL.md'), nativeBody);
-    const resolved = await resolveActiveSkill({ proSkillDir: dir });
-    expect(resolved.directory).toBe(dir);
-    expect(resolved.sourceDirectory).toBe(dir);
+  it('honors the environment override', async () => {
+    const dir = await localSkill(join(root, 'env'));
+    vi.stubEnv('OIL_UI_SKILL_DIR', dir);
+    expect((await resolveActiveSkill()).directory).toBe(dir);
+    expect((await resolveActiveSkill()).source).toBe('local-skill');
   });
 
-  it('falls back with no Pro and allows preferPro=false while still reporting an installed Pro', async () => {
-    expect(await resolveActiveSkill()).toMatchObject({ edition: 'lite', source: 'bundled-lite', name: 'oil-ui' });
-    expect(await skillStatus(null)).toMatchObject({ proInstalled: false, proSourcePath: null, visibleMatchesOriginal: false });
-    const dir = await pro(join(root, 'explicit'));
-    const status = await skillStatus(null, { proSkillDir: dir, preferPro: false });
-    expect(status).toMatchObject({ edition: 'lite', activeSkillName: 'oil-ui', proInstalled: true, proSourcePath: dir });
-    expect(status.upgradeHint).toContain('npx github:oil-oil/oil-cli install oil-ui-pro');
-  });
-
-  it('strictly follows DeepSeek Harness skill roots in priority order and ignores non-DSH hosts', async () => {
-    for (const nonDshHost of ['.cursor', '.codex', '.claude']) {
-      await pro(join(root, nonDshHost, 'skills/oil-ui-pro'));
-    }
-    expect((await resolveActiveSkill()).edition).toBe('lite');
-
-    const agents = await pro(join(root, '.agents/skills/oil-ui-pro'));
-    expect((await resolveActiveSkill()).sourceDirectory).toBe(agents);
-
-    const dsh = await pro(join(root, '.dsh/skills/oil-ui-pro'));
-    expect((await resolveActiveSkill()).sourceDirectory).toBe(dsh);
-
-    const projectDir = join(root, 'workspace');
-    const projectAgents = await pro(join(projectDir, '.agents/skills/oil-ui-pro'));
-    expect((await resolveActiveSkill({ cwd: projectDir })).sourceDirectory).toBe(projectAgents);
-
-    const projectDsh = await pro(join(projectDir, '.dsh/skills/oil-ui-pro'));
-    expect((await resolveActiveSkill({ cwd: projectDir })).sourceDirectory).toBe(projectDsh);
-
-    const env = await pro(join(root, 'env'));
-    vi.stubEnv('OIL_UI_PRO_DIR', env);
-    expect((await resolveActiveSkill({ cwd: projectDir })).sourceDirectory).toBe(env);
-
-    const explicit = await pro(join(root, 'explicit'));
-    expect((await resolveActiveSkill({ cwd: projectDir, proSkillDir: explicit })).sourceDirectory).toBe(explicit);
-  });
-
-  it('ignores wrong identity, malformed YAML and SKILL.md symlink escapes', async () => {
-    const invalid = await pro(join(root, 'invalid'), 'other');
-    expect((await resolveActiveSkill({ proSkillDir: invalid })).edition).toBe('lite');
+  it('ignores wrong identity, malformed YAML and SKILL.md symlink escapes, falling back to bundled', async () => {
+    const invalid = await localSkill(join(root, 'invalid'), 'other');
+    expect((await resolveActiveSkill({ skillDir: invalid })).source).toBe('bundled');
     await writeFile(join(invalid, 'SKILL.md'), '---\nname: [invalid\n---\n');
-    expect((await resolveActiveSkill({ proSkillDir: invalid })).edition).toBe('lite');
-    const valid = await pro(join(root, 'valid'));
+    expect((await resolveActiveSkill({ skillDir: invalid })).source).toBe('bundled');
+    const valid = await localSkill(join(root, 'valid'));
     await rm(join(invalid, 'SKILL.md'));
     await symlink(join(valid, 'SKILL.md'), join(invalid, 'SKILL.md'));
-    expect((await resolveActiveSkill({ proSkillDir: invalid })).edition).toBe('lite');
+    expect((await resolveActiveSkill({ skillDir: invalid })).source).toBe('bundled');
+    expect((await resolveActiveSkill({ skillDir: join(root, 'missing') })).source).toBe('bundled');
   });
 });
 
@@ -190,13 +168,13 @@ async function imageScript(path: string) {
 describe('local image-gen discovery', () => {
   it('reports missing image-gen and discovers configured/env scripts without caching', async () => {
     expect(await resolveImageGenScript()).toBe(null);
-    expect(await skillStatus(null, { preferPro: false })).toMatchObject({ imageGenAvailable: false, imageGenScriptPath: null });
+    expect(await skillStatus(null)).toMatchObject({ imageGenAvailable: false, imageGenScriptPath: null });
     const env = await imageScript(join(root, 'env/image_gen.py'));
     vi.stubEnv('OIL_UI_IMAGE_GEN_SCRIPT', env);
     expect(await resolveImageGenScript()).toBe(env);
     const explicit = await imageScript(join(root, 'explicit/mock.py'));
     expect(await resolveImageGenScript({ imageGenScript: ' ' + explicit + ' ' })).toBe(explicit);
-    expect(await skillStatus(null, { preferPro: false, imageGenScript: explicit })).toMatchObject({
+    expect(await skillStatus(null, { imageGenScript: explicit })).toMatchObject({
       imageGenAvailable: true,
       imageGenScriptPath: explicit,
     });
@@ -233,130 +211,53 @@ describe('local image-gen discovery', () => {
   });
 });
 
-describe('discovery snapshots, arbitration and update backoff', () => {
+describe('discovery snapshots and provider arbitration', () => {
   it('discovers project roots from a nested cwd under a Git directory or worktree file', async () => {
     const project = join(root, 'project');
     const nested = join(project, 'src/deep');
     await mkdir(nested, { recursive: true });
     await writeFile(join(project, '.git'), 'gitdir: /not-needed-for-discovery');
-    const directory = await pro(join(project, '.agents/skills/oil-ui-pro'));
-    expect((await resolveActiveSkill({ cwd: nested })).sourceDirectory).toBe(directory);
     const script = await imageScript(join(project, '.dsh/skills/image-gen/scripts/image_gen.py'));
     expect(await resolveImageGenScript({ cwd: nested })).toBe(script);
   });
 
-  it('lists metadata without compiling Pro and reuses the header snapshot until it changes', async () => {
-    const dir = await pro(join(root, 'raw-pro'));
+  it('lists the bundled Skill without caching, reuses headers, and refreshes on fingerprint change', async () => {
+    const dir = await localSkill(join(root, 'raw-skill'));
     await mkdir(join(dir, 'references'));
-    await writeFile(join(dir, 'references/tools.md'), '# 工具\nnode scripts/shoot.mjs <target>');
-    const provider = createSkillProvider({ proSkillDir: dir }, { signal: new AbortController().signal, invalidate: vi.fn() });
+    await writeFile(join(dir, 'references/tools.md'), '# 工具指南\nnode scripts/shoot.mjs <target>');
+    const provider = createSkillProvider({ skillDir: dir }, { signal: new AbortController().signal, invalidate: vi.fn() });
     const first = (await provider.list({}))[0]!;
-    expect(first.rank).toBe(10);
-    await expect(lstat(join(root, '.dsh/cache'))).rejects.toThrow();
+    expect(first).toMatchObject({ name: 'oil-ui', rank: 20, source: 'local-skill' });
     const snapshot = (await provider.refresh()).snapshot;
     expect((await provider.refresh()).snapshot.header).toBe(snapshot.header);
     expect((await provider.refresh()).changed).toBe(false);
     const loaded = await provider.get(first, {});
-    expect(loaded?.resourceBase).not.toEqual(first.resourceBase);
-    await writeFile(join(dir, 'SKILL.md'), '---\nname: oil-ui-pro\ndescription: Changed\n---\nNew');
+    expect(loaded?.resourceBase).toEqual(first.resourceBase);
+    await writeFile(join(dir, 'SKILL.md'), '---\nname: oil-ui\ndescription: Changed\n---\nNew');
     expect((await provider.refresh()).changed).toBe(true);
+    expect(await provider.get(first, {})).toBeUndefined();
   });
 
-  it('reports detected Pro separately from a scope override that is actually effective', async () => {
-    const dir = await pro(join(root, 'pro'));
-    const lite = await loadUpstreamSkill({ preferPro: false });
-    const visible = { ...lite, provider: 'scope-override', invocation: lite.invocation! };
-    const status = await skillStatus(visible, { proSkillDir: dir });
-    expect(status.detected).toMatchObject({ name: 'oil-ui-pro', version: '9.8.7' });
-    expect(status.effective).toMatchObject({ name: 'oil-ui', provider: 'scope-override', version: lite.metadata?.version });
+  it('flags an external scope override that is not the active installation', async () => {
+    const dir = await localSkill(join(root, 'override'));
+    const bundled = await loadUpstreamSkill();
+    const visible = { ...bundled, provider: 'scope-override', invocation: bundled.invocation! };
+    const status = await skillStatus(visible, { skillDir: dir });
+    expect(status.detected).toMatchObject({ name: 'oil-ui', version: '9.8.7' });
+    expect(status.effective).toMatchObject({ name: 'oil-ui', provider: 'scope-override' });
     expect(status.activeSkillName).toBe('oil-ui');
     expect(status.visibleMatchesOriginal).toBe(false);
   });
-
-  it('backs off unsuccessful checks even without a successful version or writable disk cache', async () => {
-    vi.stubEnv('OIL_NO_UPDATE_CHECK', '0');
-    const state = join(root, 'unwritable-state');
-    await writeFile(state, 'a file, not a directory');
-    vi.stubEnv('XDG_STATE_HOME', state);
-    const fetcher = vi.fn().mockRejectedValue(new Error('offline'));
-    vi.stubGlobal('fetch', fetcher);
-    const active = await resolveActiveSkill({ preferPro: false });
-    await Promise.all([checkSkillUpdate(active, '1.0.0'), checkSkillUpdate(active, '1.0.0')]);
-    await checkSkillUpdate(active, '1.0.0');
-    expect(fetcher).toHaveBeenCalledTimes(1);
-    await checkSkillUpdate(active, '1.0.0', true);
-    expect(fetcher).toHaveBeenCalledTimes(2);
-  });
-
-  it('retains the last successful version and retries only after increasing cooldowns', async () => {
-    vi.stubEnv('OIL_NO_UPDATE_CHECK', '0');
-    vi.stubEnv('XDG_STATE_HOME', join(root, 'state'));
-    const now = Date.now();
-    const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
-    const fetcher = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ skills: { 'oil-ui': { version: '2.0.0' } } })))
-      .mockRejectedValue(new Error('offline'));
-    vi.stubGlobal('fetch', fetcher);
-    const active = await resolveActiveSkill({ preferPro: false });
-    expect(await checkSkillUpdate(active, '1.0.0')).toMatchObject({ latestVersion: '2.0.0', updateAvailable: true });
-    clock.mockReturnValue(now + 600_001);
-    expect(await checkSkillUpdate(active, '1.0.0')).toMatchObject({ latestVersion: '2.0.0' });
-    await checkSkillUpdate(active, '1.0.0');
-    expect(fetcher).toHaveBeenCalledTimes(2);
-    clock.mockReturnValue(now + 630_002);
-    await checkSkillUpdate(active, '1.0.0');
-    expect(fetcher).toHaveBeenCalledTimes(3);
-    clock.mockReturnValue(now + 660_002);
-    await checkSkillUpdate(active, '1.0.0');
-    expect(fetcher).toHaveBeenCalledTimes(3);
-  });
 });
 
-describe('atomic versioned Pro compilation and review fallback', () => {
-  it('merges concurrent compiles, includes every Markdown input, and recovers incomplete trees', async () => {
-    const dir = await pro(join(root, 'pro'));
-    await mkdir(join(dir, 'references/deep'), { recursive: true });
-    await writeFile(join(dir, 'references/tools.md'), 'node scripts/shoot.mjs <target>');
-    await writeFile(join(dir, 'references/deep/extra.md'), 'first version');
-    const first = await Promise.all(Array.from({ length: 8 }, () => resolveActiveSkill({ proSkillDir: dir })));
-    expect(new Set(first.map(s => s.directory)).size).toBe(1);
-    const compiled = first[0]!.directory;
-    expect(await readFile(join(compiled, '.complete'), 'utf8')).toMatch(/^[a-f0-9]{64}$/);
-    expect(await readFile(join(compiled, 'references/deep/extra.md'), 'utf8')).toBe('first version');
-    await rm(join(compiled, '.complete'));
-    await writeFile(join(compiled, 'references/deep/extra.md'), 'partial');
-    expect((await resolveActiveSkill({ proSkillDir: dir })).directory).toBe(compiled);
-    expect(await readFile(join(compiled, 'references/deep/extra.md'), 'utf8')).toBe('first version');
-    await writeFile(join(dir, 'references/deep/extra.md'), 'second version');
-    const second = await resolveActiveSkill({ proSkillDir: dir });
-    expect(second.directory).not.toBe(compiled);
-    expect(await readFile(join(compiled, 'references/deep/extra.md'), 'utf8')).toBe('first version');
-    const cache = await readdir(join(root, '.dsh/cache/dsh-oil-ui'));
-    expect(cache.some(name => name.startsWith('.oil-ui-pro-'))).toBe(false);
-  });
-
-  it('falls back to bundled review on compile failure and refreshes manuals after a version change', async () => {
-    const dir = await pro(join(root, 'pro'));
+describe('reviewer manual loading', () => {
+  it('loads the active Skill manual, refreshes on change and falls back to bundled', async () => {
+    const dir = await localSkill(join(root, 'manual'));
     await mkdir(join(dir, 'references'));
-    await writeFile(join(dir, 'references/tools.md'), 'node scripts/shoot.mjs <target>');
-    await symlink(root, join(dir, 'references/escape'));
-    expect(await loadReviewerManual({ proSkillDir: dir })).toContain('# 视觉与交互评审手册');
-    await rm(join(dir, 'references/escape'));
-    await writeFile(join(dir, 'references/reviewer-manual.md'), '# Version one');
-    expect(await loadReviewerManual({ proSkillDir: dir })).toBe('# Version one');
-    await writeFile(join(dir, 'references/reviewer-manual.md'), '# Version two');
-    expect(await loadReviewerManual({ proSkillDir: dir })).toBe('# Version two');
-  });
-
-  it('keeps native docs free of CLI remnants and describes thumbnail scaling without narrowing the viewport', async () => {
-    const manual = await readFile(join(skillDirectory, 'references/reviewer-manual.md'), 'utf8');
-    expect(manual).not.toContain('size: "480x300"');
-    expect(manual).toMatch(/原比例缩放到 480px 或 180px/);
-    for (const [file, flag] of [['layout-and-viewport', '--compare'], ['media', '--sheet'], ['style-explorer', '--help']]) {
-      expect(await readFile(join(skillDirectory, `references/${file}.md`), 'utf8')).not.toContain(flag);
-    }
-    const tools = await readFile(join(skillDirectory, 'references/tools.md'), 'utf8');
-    expect(tools).toContain('默认 `1440x900`');
-    expect(tools).toContain('https://example.org/image.jpg');
-    expect(TRANSFORM_VERSION.length).toBeGreaterThan(0);
+    expect(await loadReviewerManual({ skillDir: dir })).toContain('# 视觉与交互评审手册（子代理专用）');
+    await writeFile(join(dir, 'references', 'reviewer-manual.md'), '# Version one');
+    expect(await loadReviewerManual({ skillDir: dir })).toBe('# Version one');
+    await writeFile(join(dir, 'references', 'reviewer-manual.md'), '# Version two');
+    expect(await loadReviewerManual({ skillDir: dir })).toBe('# Version two');
   });
 });
