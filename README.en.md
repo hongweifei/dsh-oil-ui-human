@@ -144,17 +144,17 @@ The plugin works out of the box: it uses the bundled `oil-ui` Skill and auto-dis
 
 ---
 
-## Syncing from the `oil-ui-human` Skill Repository
+## Syncing the Bundled Skill from GitHub
 
-When `oil-ui-human` updates its `SKILL.md`, reference manuals, or scripts (default source: the sibling `../oil-ui-human`, overridable via `OIL_UI_REPO`):
+The source of the bundled `skills/oil-ui` is the [hongweifei/oil-ui-human](https://github.com/hongweifei/oil-ui-human) Skill fork repository on GitHub. When its `SKILL.md`, manuals, or scripts change, run from the repository root:
 
 ```bash
-pnpm sync:skill     # Re-derives the bundled Skill and manifest from ../oil-ui-human
+pnpm sync:skill     # Shallow-clones https://github.com/hongweifei/oil-ui-human (main) into .work/ and re-derives the bundle
 pnpm check          # Typecheck + tests + rebuilds lib/index.js
 pnpm pack:plugin    # Rebuilds and packs .work/dsh-oil-ui-<version>.tgz
 ```
 
-Upstream's daily scheduled CI job that pulled `oil-oil/oil-ui`, re-vendored and auto-pushed has been removed: syncing only happens when you run it explicitly, so remote content can never overwrite local changes.
+`sync:skill` also accepts an explicit source argument or `OIL_UI_REPO`: a local directory path, any git URL, or `URL#branch/tag/commit` (e.g. `node scripts/vendor-oil-ui.mjs github:hongweifei/oil-ui-human#a42de5c`). To vendor unpushed local Skill changes while developing the fork, run `pnpm vendor:skill` (syncs the sibling `../oil-ui-human`). Derivation only happens when you run it explicitly—the plugin never contacts a remote at runtime and never rewrites the bundled Skill on its own.
 
 ---
 

@@ -145,17 +145,17 @@ dsh plugin --profile web add ./.work/dsh-oil-ui-0.3.2.tgz
 
 ---
 
-## 从 `oil-ui-human` Skill 仓库同步更新
+## 从 GitHub 同步内置 Skill
 
-当 `oil-ui-human` 更新了 `SKILL.md`、分册或脚本时，在仓库根目录运行（默认同步同级的 `../oil-ui-human`，可用环境变量 `OIL_UI_REPO` 指向其他路径）：
+内置 `skills/oil-ui` 的源是 GitHub 上的 [hongweifei/oil-ui-human](https://github.com/hongweifei/oil-ui-human)（Skill fork 仓库）。当它更新 `SKILL.md`、分册或脚本后，在仓库根目录运行：
 
 ```bash
-pnpm sync:skill     # 从 ../oil-ui-human 重新派生内置 Skill 与清单
+pnpm sync:skill     # 浅克隆 https://github.com/hongweifei/oil-ui-human (main) 到 .work/ 并重新派生
 pnpm check          # typecheck + 测试 + 重建 lib/index.js
 pnpm pack:plugin    # 重新构建并打出 .tgz 插件包
 ```
 
-上游附带的每日定时拉取 `oil-oil/oil-ui` 并自动提交推送的 CI 任务已移除：同步只在显式运行时发生，不会有远端内容覆盖本地改动。
+`sync:skill` 也可直接带参数或用 `OIL_UI_REPO` 指定其他源：本地目录路径、任意 git URL，或 `URL#分支/标签/commit`（例：`node scripts/vendor-oil-ui.mjs github:hongweifei/oil-ui-human#a42de5c`）。开发 Skill fork 时想用未推送的本地改动，跑 `pnpm vendor:skill`（同步同级目录 `../oil-ui-human`）。派生只发生在显式运行时；插件本体在运行时不访问任何远端，也不会自动改写内置 Skill。
 
 ---
 

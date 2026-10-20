@@ -49,14 +49,6 @@
       {
         "path": "README.en.md",
         "reason": "Excluded from the runtime distribution (repository metadata, caches or documentation-only files)."
-      },
-      {
-        "path": "scripts/__pycache__",
-        "reason": "Excluded from the runtime distribution (repository metadata, caches or documentation-only files)."
-      },
-      {
-        "path": "tests/__pycache__",
-        "reason": "Excluded from the runtime distribution (repository metadata, caches or documentation-only files)."
       }
     ]
   },

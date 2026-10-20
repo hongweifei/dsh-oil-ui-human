@@ -48,8 +48,8 @@
     "test": "vitest run",
     "check": "pnpm typecheck && pnpm test && pnpm build",
     "pack:plugin": "node scripts/package-plugin.mjs",
-    "sync:skill": "node scripts/vendor-oil-ui.mjs ../oil-ui-human",
-    "vendor:skill": "node scripts/vendor-oil-ui.mjs",
+    "sync:skill": "node scripts/vendor-oil-ui.mjs",
+    "vendor:skill": "node scripts/vendor-oil-ui.mjs ../oil-ui-human",
     "build:skill": "node scripts/build-dsh-skill.mjs"
   },
   "peerDependencies": {

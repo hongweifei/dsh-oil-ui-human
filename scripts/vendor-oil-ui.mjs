@@ -4,21 +4,58 @@ import { parse } from 'yaml'
 import { publicSkillFiles } from './public-skill-files.mjs'
 import { transformSkillMarkdown } from '../src/transform.ts'
 import { createHash } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
 import { chmod, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
-const skillsDirectory = path.resolve(scriptDirectory, '..', 'skills')
+const repositoryDirectory = path.resolve(scriptDirectory, '..')
+const skillsDirectory = path.join(repositoryDirectory, 'skills')
 const destinationDirectory = path.join(skillsDirectory, 'oil-ui')
 const manifestPath = path.join(skillsDirectory, 'oil-ui.manifest.json')
 const excludedNames = new Set(['.git', '.DS_Store', '__pycache__'])
 // Documentation-only artwork and duplicate English README are outside the runtime distribution.
 const documentationOnly = new Set(['assets/readme', 'README.en.md'])
+// The Skill source is the fork repository on GitHub; runtime never fetches, only this explicit dev script does.
+const defaultSource = 'https://github.com/hongweifei/oil-ui-human.git#main'
 
 function usage() {
-  process.stderr.write('Usage: node scripts/vendor-oil-ui.mjs <source-skill-directory>\n')
+  process.stderr.write('Usage: node scripts/vendor-oil-ui.mjs [source-skill-directory|git-url[#ref]]\n')
+  process.stderr.write(`Default source: ${defaultSource} (override with OIL_UI_REPO or an argument)\n`)
   process.exitCode = 2
+}
+
+function isRemoteSource(spec) {
+  return /^(?:https?:\/\/|ssh:\/\/|git\+ssh:\/\/|git@[\w.-]+:|github:)/i.test(spec)
+}
+
+function remoteToGitUrl(spec) {
+  const url = spec.replace(/^github:/i, 'https://github.com/')
+  const hash = url.indexOf('#')
+  if (hash === -1) return { url, ref: 'main' }
+  return { url: url.slice(0, hash), ref: url.slice(hash + 1) || 'main' }
+}
+
+async function cloneSkillSource(spec) {
+  const { url, ref } = remoteToGitUrl(spec)
+  const checkoutDirectory = path.join(repositoryDirectory, '.work', 'oil-ui-human-source')
+  const git = (args, cwd) => {
+    const result = spawnSync('git', args, { cwd, encoding: 'utf8' })
+    if (result.error) throw result.error
+    if (result.status !== 0) throw new Error(`git ${args[0]} failed:\n${result.stderr || result.stdout}`)
+    return result
+  }
+  await rm(checkoutDirectory, { recursive: true, force: true })
+  await mkdir(path.dirname(checkoutDirectory), { recursive: true })
+  if (!/^[0-9a-f]{40}$/i.test(ref)) git(['init', checkoutDirectory])
+  else { git(['init', checkoutDirectory]); git(['remote', 'add', 'origin', url], checkoutDirectory) }
+  if (/^[0-9a-f]{40}$/i.test(ref)) git(['fetch', '--depth', '1', 'origin', ref], checkoutDirectory)
+  else git(['fetch', '--depth', '1', url, ref], checkoutDirectory)
+  git(['checkout', '--detach', 'FETCH_HEAD'], checkoutDirectory)
+  const head = git(['rev-parse', 'HEAD'], checkoutDirectory).stdout.trim()
+  process.stdout.write(`Cloned ${url}@${ref} (HEAD ${head.slice(0, 12)}) into .work/oil-ui-human-source\n`)
+  return realpath(checkoutDirectory)
 }
 
 function inside(root, candidate) {
@@ -149,14 +186,16 @@ async function verifyCopy(root, entries) {
 }
 
 async function main() {
-  const sourceArgument = process.argv[2] ?? process.env.OIL_UI_REPO ?? path.resolve(scriptDirectory, '..', '..', 'oil-ui-human')
-  if (!sourceArgument || sourceArgument.startsWith('--')) {
+  const sourceArgument = process.argv[2] ?? process.env.OIL_UI_REPO ?? defaultSource
+  if (sourceArgument.startsWith('--')) {
     usage()
     return
   }
 
-  const sourceRoot = await realpath(path.resolve(sourceArgument))
-  if (!(await stat(sourceRoot)).isDirectory()) throw new Error('The supplied source must be a directory.')
+  const sourceRoot = isRemoteSource(sourceArgument)
+    ? await cloneSkillSource(sourceArgument)
+    : await realpath(path.resolve(sourceArgument))
+  if (!(await stat(sourceRoot)).isDirectory()) throw new Error('The supplied source must be a local directory or a git URL.')
   const sourceSkill = path.join(sourceRoot, 'SKILL.md')
   const raw = await readFile(sourceSkill, 'utf8')
   const identity = parse(raw.match(/^---\r?\n([\s\S]*?)\r?\n---/)[1])
