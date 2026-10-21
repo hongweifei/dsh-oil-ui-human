@@ -2,7 +2,7 @@
 
 import { parse } from 'yaml'
 import { publicSkillFiles } from './public-skill-files.mjs'
-import { transformSkillMarkdown } from '../src/transform.ts'
+import { isHarnessNativeSkillMarkdown, transformSkillMarkdown, validateSkillTree } from '../src/transform.ts'
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { chmod, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
@@ -198,6 +198,10 @@ async function main() {
   if (!(await stat(sourceRoot)).isDirectory()) throw new Error('The supplied source must be a local directory or a git URL.')
   const sourceSkill = path.join(sourceRoot, 'SKILL.md')
   const raw = await readFile(sourceSkill, 'utf8')
+  // Fail before staging when the source wording drifted away from a required rewrite rule,
+  // otherwise the derived tree would silently keep CLI text.
+  const validation = await validateSkillTree(sourceRoot, { mode: 'strict' })
+  const nativeSource = isHarnessNativeSkillMarkdown(raw)
   const identity = parse(raw.match(/^---\r?\n([\s\S]*?)\r?\n---/)[1])
   if (identity.name !== 'oil-ui') throw new Error('Only the open-source oil-ui may be bundled.')
   const version = versionFromSkill(raw)
@@ -217,8 +221,8 @@ async function main() {
       await mkdir(path.dirname(targetPath), { recursive: true })
       if (entry.path.endsWith('.md')) {
         const raw = await readFile(entry.sourcePath, 'utf8')
-        const compiled = transformSkillMarkdown(entry.path, raw)
-        const buf = Buffer.from(compiled, 'utf8')
+        const compiled = transformSkillMarkdown(entry.path, raw, { mode: 'strict', native: nativeSource })
+        const buf = Buffer.from(compiled.markdown, 'utf8')
         await writeFile(targetPath, buf)
         entry.size = buf.length
         entry.sha256 = createHash('sha256').update(buf).digest('hex')
@@ -273,7 +277,7 @@ async function main() {
     await rename(stagedManifest, manifestPath)
 
     await verifyCopy(destinationDirectory, entries)
-    process.stdout.write(`Vendored oil-ui ${version}: ${entries.length} files copied; ${exclusions.length} non-runtime paths excluded; ${symlinks.length} internal symlinks resolved.\n`)
+    process.stdout.write(`Vendored oil-ui ${version}: ${entries.length} files copied; ${exclusions.length} non-runtime paths excluded; ${symlinks.length} internal symlinks resolved; ${validation.rules.length} rewrite rules checked.\n`)
   } finally {
     if (!installed) await rm(stageDirectory, { recursive: true, force: true }).catch(() => {})
     await rm(stagedManifest, { force: true }).catch(() => {})

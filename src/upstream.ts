@@ -153,7 +153,7 @@ export async function loadReviewerManual(options: SkillOptions = {}, activeSkill
       const key = `${TRANSFORM_VERSION}:${path}:${info.ino}:${info.mtimeMs}:${info.ctimeMs}:${info.size}`;
       let manual = reviewerManuals.get(key);
       if (!manual) {
-        manual = readFile(path, 'utf8').then(raw => transformSkillMarkdown('references/reviewer-manual.md', raw));
+        manual = readFile(path, 'utf8').then(raw => transformSkillMarkdown('references/reviewer-manual.md', raw, { mode: 'lenient' }).markdown);
         reviewerManuals.set(key, manual);
       }
       return await manual;
@@ -166,7 +166,8 @@ export async function loadUpstreamSkill(options: SkillOptions = {}, snapshot?: S
   const active = await resolveActiveSkill(options, snapshot);
   const path = join(active.directory, 'SKILL.md');
   const raw = await readFile(path, 'utf8');
-  const compiled = isHarnessNativeSkillMarkdown(raw) ? raw : transformSkillMarkdown('SKILL.md', raw);
+  const native = isHarnessNativeSkillMarkdown(raw);
+  const compiled = native ? raw : transformSkillMarkdown('SKILL.md', raw, { mode: 'lenient' }).markdown;
   const { data, content } = frontmatter(compiled);
   if (data.name !== active.name) throw new Error('Invalid active Skill identity');
   return {

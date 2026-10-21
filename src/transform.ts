@@ -52,109 +52,290 @@ const NATIVE_TOOL_COMMANDS_SECTION = `### 常用调用方式（\`oil_ui_shoot\`�
 
 写好三个候选首屏（如 \`explore/a.html\`、\`explore/b.html\`、\`explore/c.html\`）后，调用 \`oil_ui_explorer({ "manifest": "explore/manifest.json", "out": "style-explorer.html" })\` 即可生成内嵌全部本地资源的独立对比页。`;
 
-export function transformSkillMarkdown(relativePath: string, raw: string): string {
-  const normalized = relativePath.split(sep).join('/');
+const COMPATIBILITY_LINE =
+  'compatibility: "通过 oil_ui_shoot、oil_ui_media、oil_ui_image、oil_ui_explorer、oil_ui_skill_status 与 read_image、subagent 完成截图取证、真实素材检索、AI 生图修图、对比页组装和独立视觉评审。"';
 
-  if (normalized === 'SKILL.md') {
-    let out = raw;
-    // Remove bash allowed-tools block from frontmatter (defensive: custom sources may still carry one)
-    out = out.replace(/\r?\nallowed-tools:\r?\n(?:\s+-\s+[^\r\n]+\r?\n)+/, '\n');
-    // Update compatibility line in frontmatter
-    out = out.replace(
-      /compatibility:\s*"[^"]*"/,
-      'compatibility: "通过 oil_ui_shoot、oil_ui_media、oil_ui_image、oil_ui_explorer、oil_ui_skill_status 与 read_image、subagent 完成截图取证、真实素材检索、AI 生图修图、对比页组装和独立视觉评审。"',
-    );
-    // Replace ## 方法体系 section with native tool routing
-    out = out.replace(
-      /## 方法体系\r?\n\r?\n[\s\S]*?(?=\r?\n## 范围界定)/,
-      `## 方法体系\n\n相关工作方法与评审协议均位于本目录之下；截图、素材、生图与对比页能力由插件工具 \`oil_ui_shoot\`、\`oil_ui_media\`、\`oil_ui_image\`、\`oil_ui_explorer\` 与 \`oil_ui_skill_status\` 提供，工具用法详见 [工具指南](references/tools.md)，无需为此单独加载其他 Skill，也不需要执行本目录内的脚本。先调用 \`oil_ui_skill_status\` 确认生图工具可用状态（\`imageGenAvailable\`）与 Skill 目录。前端实现方案应遵循项目既有的技术规范与约定，若宿主环境或项目规范明确要求加载特定 Skill，则按规范要求执行。相对路径引用均从本文件所在目录开始计算。`,
-    );
-    // Replace CLI flags in body text with tool parameters
-    out = out
-      .replace(/使用截图工具的 `--compare` 参数/g, '使用 `oil_ui_shoot` 的 `compare` 参数')
-      .replace(/截图工具的 `--compare` 参数/g, '`oil_ui_shoot` 的 `compare` 参数')
-      .replace(/一条 `--evidence` 命令即可输出/g, '一次 `oil_ui_shoot`（`evidence: true`）调用即可输出')
-      .replace(/一条 `--evidence` 命令就能出齐/g, '调用 `oil_ui_shoot`（`evidence: true`）就能出齐');
-    // Fallback replacements for standalone script mentions in custom or minimal SKILL.md files
-    out = out
-      .replace(/`scripts\/shoot\.mjs`/g, '`oil_ui_shoot`')
-      .replace(/`scripts\/curate-media\.mjs`/g, '`oil_ui_media`')
-      .replace(/`scripts\/build_explorer\.py`/g, '`oil_ui_explorer`');
-    return out;
+const METHOD_SECTION = `## 方法体系
+
+相关工作方法与评审协议均位于本目录之下；截图、素材、生图与对比页能力由插件工具 \`oil_ui_shoot\`、\`oil_ui_media\`、\`oil_ui_image\`、\`oil_ui_explorer\` 与 \`oil_ui_skill_status\` 提供，工具用法详见 [工具指南](references/tools.md)，无需为此单独加载其他 Skill，也不需要执行本目录内的脚本。先调用 \`oil_ui_skill_status\` 确认生图工具可用状态（\`imageGenAvailable\`）与 Skill 目录。前端实现方案应遵循项目既有的技术规范与约定，若宿主环境或项目规范明确要求加载特定 Skill，则按规范要求执行。相对路径引用均从本文件所在目录开始计算。`;
+
+const TOOLS_INTRO = '# 工具指南\n\n所有路径相对于当前工作目录解析。查看图片用 `read_image`，派发独立视觉评审用 `subagent`。截图、素材检索、生图与对比页组装均通过插件提供的 `oil_ui_shoot`、`oil_ui_media`、`oil_ui_image`、`oil_ui_explorer` 工具完成，不需要执行本目录内的脚本。';
+
+const EXPLORER_GENERATE = `## 生成与打开\n\n调用 \`oil_ui_explorer\` 生成对比页：\n\n\`\`\`json\n{\n  "manifest": "explore/manifest.json",\n  "out": "style-explorer.html"\n}\n\`\`\`\n\n\`manifest\` 可传 \`manifest.json\` 的相对路径，也可直接传 JSON 对象；不传时工具会自动查找工作目录下的 \`manifest.json\` 或 \`explore/a.html\`、\`b.html\`、\`c.html\`。对比页默认生成在工作目录根部的 \`style-explorer.html\`，并返回预览地址 \`explorerUrl\`。输入有误时，工具会一次性列出全部需要修正之处，按提示修改后重新调用。组装失败时，将 manifest 和候选留给用户直接查看，说明对比页尚未组装完成，不临时另写一套工具。`;
+
+export interface MarkdownRule {
+  id: string;
+  file: string;
+  match: RegExp;
+  replacement: string;
+  /**
+   * Rewrites that must apply to the fork's own documentation. An unmatched required
+   * rule means the source wording drifted and the derived tree would keep CLI text,
+   * so vendoring must fail instead of shipping a half-transformed Skill.
+   */
+  required: boolean;
+  optionalReason?: string;
+  /** Deletions/replacements cannot be detected by searching for the replacement text. */
+  alreadyApplied?: (markdown: string) => boolean;
+}
+
+// Rules run in declaration order. Only compatibility fallbacks may be optional;
+// upstream wording changes must be fixed in the rule, not silenced by making it optional.
+export const MARKDOWN_RULES: readonly MarkdownRule[] = [
+  {
+    id: 'skill.remove-allowed-tools', file: 'SKILL.md', required: false,
+    optionalReason: 'The fork frontmatter no longer carries allowed-tools; kept for custom or minimal sources.',
+    match: /\r?\nallowed-tools:\r?\n(?:\s+-\s+[^\r\n]+\r?\n)+/,
+    replacement: '\n',
+    alreadyApplied: markdown => !/^allowed-tools:/m.test(markdown),
+  },
+  {
+    id: 'skill.compatibility', file: 'SKILL.md', required: true,
+    match: /compatibility:\s*"[^"]*"/,
+    replacement: COMPATIBILITY_LINE,
+  },
+  {
+    id: 'skill.method', file: 'SKILL.md', required: true,
+    match: /## 方法体系\r?\n\r?\n[\s\S]*?(?=\r?\n## 范围界定)/,
+    replacement: METHOD_SECTION,
+  },
+  {
+    id: 'skill.compare', file: 'SKILL.md', required: true,
+    match: /使用截图工具的 `--compare` 参数/g,
+    replacement: '使用 `oil_ui_shoot` 的 `compare` 参数',
+  },
+  {
+    id: 'skill.compare-short', file: 'SKILL.md', required: false,
+    optionalReason: 'Consumed by skill.compare when the longer "使用截图工具的" phrasing is present.',
+    match: /截图工具的 `--compare` 参数/g,
+    replacement: '`oil_ui_shoot` 的 `compare` 参数',
+  },
+  {
+    id: 'skill.evidence', file: 'SKILL.md', required: true,
+    match: /一条 `--evidence` 命令即可输出/g,
+    replacement: '一次 `oil_ui_shoot`（`evidence: true`）调用即可输出',
+  },
+  {
+    id: 'skill.evidence-alt', file: 'SKILL.md', required: false,
+    optionalReason: 'Compatibility with trees that still carry the older “就能出齐” phrasing.',
+    match: /一条 `--evidence` 命令就能出齐/g,
+    replacement: '调用 `oil_ui_shoot`（`evidence: true`）就能出齐',
+  },
+  {
+    id: 'skill.fallback-shoot', file: 'SKILL.md', required: false,
+    optionalReason: 'Fallback for standalone script mentions in custom or minimal SKILL.md files.',
+    match: /`scripts\/shoot\.mjs`/g,
+    replacement: '`oil_ui_shoot`',
+  },
+  {
+    id: 'skill.fallback-media', file: 'SKILL.md', required: false,
+    optionalReason: 'Fallback for standalone script mentions in custom or minimal SKILL.md files.',
+    match: /`scripts\/curate-media\.mjs`/g,
+    replacement: '`oil_ui_media`',
+  },
+  {
+    id: 'skill.fallback-explorer', file: 'SKILL.md', required: false,
+    optionalReason: 'Fallback for standalone script mentions in custom or minimal SKILL.md files.',
+    match: /`scripts\/build_explorer\.py`/g,
+    replacement: '`oil_ui_explorer`',
+  },
+  {
+    id: 'tools.intro', file: 'references/tools.md', required: true,
+    match: /^# 工具指南\r?\n\r?\n[\s\S]*?(?=\r?\n## 截图和录屏)/,
+    replacement: TOOLS_INTRO,
+  },
+  {
+    id: 'tools.native-commands', file: 'references/tools.md', required: true,
+    match: /### (?:常用命令|常用调用方式（`oil_ui_shoot`）)\r?\n\r?\n[\s\S]*?(?=\r?\n### 查看结果)/,
+    replacement: NATIVE_TOOL_COMMANDS_SECTION,
+  },
+  {
+    id: 'tools.evidence', file: 'references/tools.md', required: true,
+    match: /使用 `--evidence` 一次取齐/g,
+    replacement: '用 `oil_ui_shoot`（`evidence: true`）一次取齐',
+  },
+  {
+    id: 'tools.evidence-alt', file: 'references/tools.md', required: false,
+    optionalReason: 'Compatibility with trees that still use the “用 --evidence” phrasing.',
+    match: /用 `--evidence` 一次取齐/g,
+    replacement: '用 `oil_ui_shoot`（`evidence: true`）一次取齐',
+  },
+  {
+    id: 'tools.single-shot', file: 'references/tools.md', required: true,
+    match: /一条命令/g,
+    replacement: '一次 `oil_ui_shoot` 调用',
+  },
+  {
+    id: 'tools.dom-hints', file: 'references/tools.md', required: true,
+    match: /命令输出中以"可读性提示"列出/g,
+    replacement: '以 `oil_ui_shoot` 返回的 `domHints` 与输出中的"可读性提示"列出',
+  },
+  {
+    id: 'tools.fallback-shoot', file: 'references/tools.md', required: false,
+    optionalReason: 'Fallback for inline CLI mentions outside the commands section.',
+    match: /`node\s+[^\r\n`]*shoot\.mjs[^\r\n`]*`/g,
+    replacement: '`oil_ui_shoot`',
+  },
+  {
+    id: 'tools.fallback-media', file: 'references/tools.md', required: false,
+    optionalReason: 'Fallback for inline CLI mentions outside the commands section.',
+    match: /`node\s+[^\r\n`]*curate-media\.mjs[^\r\n`]*`/g,
+    replacement: '`oil_ui_media`',
+  },
+  {
+    id: 'explorer.parameter-help', file: 'references/style-explorer.md', required: true,
+    match: /每个字段的写法与限制见生成器的 `--help`。/g,
+    replacement: '字段与限制以 `oil_ui_explorer` 的参数说明及本页 manifest 示例为准。',
+  },
+  {
+    id: 'explorer.generate', file: 'references/style-explorer.md', required: true,
+    match: /## 生成与打开\r?\n\r?\n```text\r?\npython3 <skill>\/scripts\/build_explorer\.py <manifest 所在目录>\/manifest\.json\r?\n```\r?\n\r?\n[^\r\n]+/,
+    replacement: EXPLORER_GENERATE,
+  },
+  {
+    id: 'explorer.shoot', file: 'references/style-explorer.md', required: true,
+    match: /`node <skill>\/scripts\/shoot\.mjs <manifest 所在目录> --size desktop --thumb --out shots\/explore`/g,
+    replacement: '`oil_ui_shoot({ "target": "explore", "size": "desktop", "thumb": true, "out": "shots/explore" })`',
+  },
+  {
+    id: 'media.sheet', file: 'references/media.md', required: true,
+    match: /`--sheet`/g,
+    replacement: '`oil_ui_media` 的 `sheet: true`',
+  },
+  {
+    id: 'media.curate', file: 'references/media.md', required: true,
+    match: /`curate-media\.mjs` 从 Poly Haven/g,
+    replacement: '`oil_ui_media` 从 Poly Haven',
+  },
+  {
+    id: 'media.image', file: 'references/media.md', required: true,
+    match: /遵循宿主生成工具自身的输入与编辑规则。/g,
+    replacement: '需要生成或编辑图片时用 `oil_ui_image`（支持 `mode: "generate"` 文生图、`mode: "edit"` 传入 1–16 张本地参考图做同模多材质变体、以及 `background: "transparent"` 透明底抠图）。',
+  },
+  {
+    id: 'layout.compare', file: 'references/layout-and-viewport.md', required: true,
+    match: /使用截图工具的 `--compare` 参数/g,
+    replacement: '使用 `oil_ui_shoot` 的 `compare` 参数',
+  },
+  {
+    id: 'layout.compare-short', file: 'references/layout-and-viewport.md', required: false,
+    optionalReason: 'Consumed by layout.compare when the longer "使用截图工具的" phrasing is present.',
+    match: /截图工具的 `--compare` 参数/g,
+    replacement: '`oil_ui_shoot` 的 `compare` 参数',
+  },
+  {
+    id: 'review.new-interface', file: 'references/visual-review.md', required: true,
+    match: /请读取 references\/reviewer-manual\.md，按照【全新界面与改版评审】标准/g,
+    replacement: '按照你系统提示词中已内置的《视觉与交互评审手册》【全新界面与改版评审】标准',
+  },
+  {
+    id: 'review.existing-interface', file: 'references/visual-review.md', required: true,
+    match: /请读取 references\/reviewer-manual\.md，按照【存量已有界面润色评审】标准/g,
+    replacement: '按照你系统提示词中已内置的《视觉与交互评审手册》【存量已有界面润色评审】标准',
+  },
+  {
+    id: 'review.dispatch', file: 'references/visual-review.md', required: true,
+    match: /模板中的路径应替换为本 Skill 目录下的绝对路径：子代理的工作目录不是本目录。/g,
+    replacement: '子代理启动时已由插件自动将《视觉与交互评审手册》（`references/reviewer-manual.md`）注入其系统提示词，主 Agent 只需调用 `subagent` 传入下方交接清单与对应模式指令，无需附带手册路径，也无需让子代理再次读取手册。',
+  },
+  {
+    id: 'reviewer.thumbnail', file: 'references/reviewer-manual.md', required: true,
+    match: /可以使用截图工具生成缩略图与遮字图辅助判断。/g,
+    replacement: '能用 `oil_ui_shoot` 时，用它出缩略图（保持原始桌面或手机视口截图，再按原比例缩放到 480px 或 180px 宽，不能改成窄视口重新截图）和遮字图（`mask: true`），并用 `read_image` 查看截图。',
+  },
+  {
+    id: 'reviewer.legacy-thumbnail', file: 'references/reviewer-manual.md', required: false,
+    optionalReason: 'Compatibility with previously compiled manuals that used the older thumbnail sentence.',
+    match: /能用截图工具时，用它出缩略图和遮字图。/g,
+    replacement: '能用 `oil_ui_shoot` 时，用它出缩略图（保持桌面或手机的原始视口截图，再按原比例缩放到 480px 或 180px 宽，不能改成窄视口重新截图）和遮字图（`mask: true`），并用 `read_image` 查看截图。',
+  },
+  {
+    id: 'reviewer.play-link', file: 'references/reviewer-manual.md', required: true,
+    match: /\[游玩\]\(play\.md\)/g,
+    replacement: '[游玩](references/play.md)',
+  },
+];
+
+export interface RuleResult {
+  id: string;
+  file: string;
+  required: boolean;
+  matches: number;
+  status: 'matched' | 'already-transformed' | 'unmatched';
+}
+
+export class SkillTransformError extends Error {
+  readonly unmatchedRules: RuleResult[];
+
+  constructor(unmatchedRules: RuleResult[]) {
+    super(`Required Skill rewrite rules did not match:\n${unmatchedRules.map(rule => `- ${rule.id} (${rule.file})`).join('\n')}`);
+    this.name = 'SkillTransformError';
+    this.unmatchedRules = unmatchedRules;
   }
+}
 
-  if (normalized === 'references/tools.md') {
-    let out = raw;
-    // Replace the intro CLI note between `# 工具指南` and `## 截图和录屏`
-    out = out.replace(
-      /^# 工具指南\r?\n\r?\n[\s\S]*?(?=\r?\n## 截图和录屏)/,
-      '# 工具指南\n\n所有路径相对于当前工作目录解析。查看图片用 `read_image`，派发独立视觉评审用 `subagent`。截图、素材检索、生图与对比页组装均通过插件提供的 `oil_ui_shoot`、`oil_ui_media`、`oil_ui_image`、`oil_ui_explorer` 工具完成，不需要执行本目录内的脚本。',
-    );
-    // Replace CLI command blocks (`### 常用命令` .. `### 查看结果`)
-    out = out.replace(
-      /### (?:常用命令|常用调用方式（`oil_ui_shoot`）)\r?\n\r?\n[\s\S]*?(?=\r?\n### 查看结果)/,
-      NATIVE_TOOL_COMMANDS_SECTION,
-    );
-    // Replace inline CLI mentions in remaining methodology paragraphs
-    out = out
-      .replace(/使用 `--evidence` 一次取齐/g, '用 `oil_ui_shoot`（`evidence: true`）一次取齐')
-      .replace(/用 `--evidence` 一次取齐/g, '用 `oil_ui_shoot`（`evidence: true`）一次取齐')
-      .replace(/一条命令/g, '一次 `oil_ui_shoot` 调用')
-      .replace(/命令输出中以"可读性提示"列出/g, '以 `oil_ui_shoot` 返回的 `domHints` 与输出中的"可读性提示"列出')
-      .replace(/`node\s+[^\r\n`]*shoot\.mjs[^\r\n`]*`/g, '`oil_ui_shoot`')
-      .replace(/`node\s+[^\r\n`]*curate-media\.mjs[^\r\n`]*`/g, '`oil_ui_media`');
-    return out;
+function assertRequiredRules(results: RuleResult[]): void {
+  const missing = results.filter(rule => rule.required && rule.status === 'unmatched');
+  if (missing.length) throw new SkillTransformError(missing);
+}
+
+/**
+ * @param alreadyTransformed Evidence is taken from the input, never from text an earlier
+ * rule inserted, so an already-native tree reports `already-transformed` rather than `matched`.
+ */
+export function transformSkillMarkdown(
+  relativePath: string,
+  raw: string,
+  options: { mode?: 'strict' | 'lenient'; native?: boolean } = {},
+): { markdown: string; rules: RuleResult[] } {
+  const file = relativePath.split(/[/\\]/).join('/');
+  const evidence = raw.split('\r\n').join('\n');
+  const results: RuleResult[] = [];
+  let markdown = raw;
+  for (const rule of MARKDOWN_RULES) {
+    if (rule.file !== file) continue;
+    let matches = 0;
+    const alreadyApplied = options.native === true && (rule.alreadyApplied
+      ? rule.alreadyApplied(evidence)
+      : evidence.includes(rule.replacement));
+    markdown = markdown.replace(new RegExp(rule.match.source, rule.match.flags), () => {
+      matches++;
+      return rule.replacement;
+    });
+    results.push({ id: rule.id, file, required: rule.required, matches,
+      status: matches ? 'matched' : alreadyApplied ? 'already-transformed' : 'unmatched' });
   }
+  if (options.mode === 'strict') assertRequiredRules(results);
+  return { markdown, rules: results };
+}
 
-  if (normalized === 'references/style-explorer.md') {
-    return raw
-      .replace(/每个字段的写法与限制见生成器的 `--help`。/g, '字段与限制以 `oil_ui_explorer` 的参数说明及本页 manifest 示例为准。')
-      .replace(
-        /## 生成与打开\r?\n\r?\n```text\r?\npython3 <skill>\/scripts\/build_explorer\.py <manifest 所在目录>\/manifest\.json\r?\n```\r?\n\r?\n[^\r\n]+/,
-        `## 生成与打开\n\n调用 \`oil_ui_explorer\` 生成对比页：\n\n\`\`\`json\n{\n  "manifest": "explore/manifest.json",\n  "out": "style-explorer.html"\n}\n\`\`\`\n\n\`manifest\` 可传 \`manifest.json\` 的相对路径，也可直接传 JSON 对象；不传时工具会自动查找工作目录下的 \`manifest.json\` 或 \`explore/a.html\`、\`b.html\`、\`c.html\`。对比页默认生成在工作目录根部的 \`style-explorer.html\`，并返回预览地址 \`explorerUrl\`。输入有误时，工具会一次性列出全部需要修正之处，按提示修改后重新调用。组装失败时，将 manifest 和候选留给用户直接查看，说明对比页尚未组装完成，不临时另写一套工具。`,
-      )
-      .replace(
-        /`node <skill>\/scripts\/shoot\.mjs <manifest 所在目录> --size desktop --thumb --out shots\/explore`/g,
-        '`oil_ui_shoot({ "target": "explore", "size": "desktop", "thumb": true, "out": "shots/explore" })`',
-      );
+/**
+ * Check every rule file, including files absent from the fork distribution, and aggregate
+ * failures before publishing so vendoring reports all drift at once.
+ */
+export async function validateSkillTree(sourceRoot: string, options: { mode?: 'strict' | 'lenient' } = {}) {
+  const realSource = await realpath(sourceRoot);
+  const results: RuleResult[] = [];
+  const readMarkdown = async (file: string): Promise<string> => {
+    try {
+      const actual = await realpath(join(realSource, ...file.split('/')));
+      const rel = relative(realSource, actual);
+      if (rel === '..' || rel.startsWith(`..${sep}`)) throw new Error(`Skill entry escapes root: ${file}`);
+      return await readFile(actual, 'utf8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return '';
+      throw error;
+    }
+  };
+  const skill = await readMarkdown('SKILL.md');
+  if (!/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.test(skill)) throw new Error('Expected oil-ui SKILL.md frontmatter.');
+  const native = isHarnessNativeSkillMarkdown(skill);
+  for (const file of new Set(MARKDOWN_RULES.map(rule => rule.file))) {
+    const raw = file === 'SKILL.md' ? skill : await readMarkdown(file);
+    results.push(...transformSkillMarkdown(file, raw, { native }).rules);
   }
-
-  if (normalized === 'references/media.md') {
-    return raw
-      .replace(/`--sheet`/g, '`oil_ui_media` 的 `sheet: true`')
-      .replace(/`curate-media\.mjs` 从 Poly Haven/g, '`oil_ui_media` 从 Poly Haven')
-      .replace(/遵循宿主生成工具自身的输入与编辑规则。/g, '需要生成或编辑图片时用 `oil_ui_image`（支持 `mode: "generate"` 文生图、`mode: "edit"` 传入 1–16 张本地参考图做同模多材质变体、以及 `background: "transparent"` 透明底抠图）。');
-  }
-
-  if (normalized === 'references/layout-and-viewport.md') {
-    return raw
-      .replace(/使用截图工具的 `--compare` 参数/g, '使用 `oil_ui_shoot` 的 `compare` 参数')
-      .replace(/截图工具的 `--compare` 参数/g, '`oil_ui_shoot` 的 `compare` 参数');
-  }
-
-  if (normalized === 'references/visual-review.md') {
-    return raw
-      .replace(
-        /请读取 references\/reviewer-manual\.md，按照【全新界面与改版评审】标准/g,
-        '按照你系统提示词中已内置的《视觉与交互评审手册》【全新界面与改版评审】标准',
-      )
-      .replace(
-        /请读取 references\/reviewer-manual\.md，按照【存量已有界面润色评审】标准/g,
-        '按照你系统提示词中已内置的《视觉与交互评审手册》【存量已有界面润色评审】标准',
-      )
-      .replace(
-        /模板中的路径应替换为本 Skill 目录下的绝对路径：子代理的工作目录不是本目录。/g,
-        '子代理启动时已由插件自动将《视觉与交互评审手册》（`references/reviewer-manual.md`）注入其系统提示词，主 Agent 只需调用 `subagent` 传入下方交接清单与对应模式指令，无需附带手册路径，也无需让子代理再次读取手册。',
-      );
-  }
-
-  if (normalized === 'references/reviewer-manual.md') {
-    return raw
-      .replace(/可以使用截图工具生成缩略图与遮字图辅助判断。/g, '能用 `oil_ui_shoot` 时，用它出缩略图（保持原始桌面或手机视口截图，再按原比例缩放到 480px 或 180px 宽，不能改成窄视口重新截图）和遮字图（`mask: true`），并用 `read_image` 查看截图。')
-      .replace(/\[游玩\]\(play\.md\)/g, '[游玩](references/play.md)');
-  }
-
-  return raw;
+  if (options.mode === 'strict') assertRequiredRules(results);
+  return { rules: results, unmatchedRules: results.filter(rule => rule.required && rule.status === 'unmatched') };
 }
 
 export function isHarnessNativeSkillMarkdown(raw: string): boolean {
@@ -164,9 +345,12 @@ export function isHarnessNativeSkillMarkdown(raw: string): boolean {
 export async function compileHarnessSkillTree(
   sourceRoot: string,
   targetRoot: string,
-  options: { symlinkBinaryAssets?: boolean } = {},
+  options: { symlinkBinaryAssets?: boolean; mode?: 'strict' | 'lenient' } = {},
 ): Promise<void> {
   const realSource = await realpath(sourceRoot);
+  // Validate the whole tree up front: a wording drift must fail before anything is published.
+  const report = await validateSkillTree(realSource, { mode: options.mode });
+  const native = isHarnessNativeSkillMarkdown(await readFile(join(realSource, 'SKILL.md'), 'utf8').catch(() => ''));
   await rm(targetRoot, { recursive: true, force: true });
   await mkdir(targetRoot, { recursive: true });
 
@@ -200,8 +384,8 @@ export async function compileHarnessSkillTree(
       await mkdir(dirname(dstPath), { recursive: true });
       if (entry.name.endsWith('.md')) {
         const raw = await readFile(srcPath, 'utf8');
-        const transformed = transformSkillMarkdown(relPath, raw);
-        await writeFile(dstPath, transformed, 'utf8');
+        const transformed = transformSkillMarkdown(relPath, raw, { mode: options.mode, native });
+        await writeFile(dstPath, transformed.markdown, 'utf8');
         await chmod(dstPath, info.mode & 0o777);
       } else {
         await copyFile(srcPath, dstPath);
@@ -218,4 +402,5 @@ export async function compileHarnessSkillTree(
     const dstIgnore = join(targetRoot, '.gitignore');
     await copyFile(srcIgnore, dstIgnore);
   }
+  void report;
 }
